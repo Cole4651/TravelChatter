@@ -6,9 +6,9 @@ require('dotenv').config();
 const app = express();
 const port = 3000;
 
-const openai = new OpenAI({
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-});
+}) : null;
 
 app.use(bodyParser.json());
 app.use(express.static('public'));
@@ -72,7 +72,7 @@ app.post('/chat', async (req, res) => {
 
   let response = "I'm here to help with your travel needs. Can you be more specific?";
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!openai) {
     // Use mock responses
     const stageResponses = mockResponses[stage] || {};
     for (const key in stageResponses) {
