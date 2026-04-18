@@ -1,4 +1,26 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+        window.location.href = 'index.html';
+        return;
+    }
+
+    fetch('/me', { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                localStorage.removeItem('authToken');
+                window.location.href = 'index.html';
+                return;
+            }
+            document.getElementById('auth-status').textContent = data.email;
+        });
+
+    document.getElementById('logout-button').addEventListener('click', () => {
+        localStorage.removeItem('authToken');
+        window.location.href = 'index.html';
+    });
+
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const chatMessages = document.getElementById('chat-messages');
@@ -18,22 +40,18 @@ document.addEventListener('DOMContentLoaded', () => {
         addMessage(message, true);
 
         try {
-            const response = await fetch('/chat', {
+            const res = await fetch('/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
                 },
-                body: JSON.stringify({ message, stage }),
+                body: JSON.stringify({ message, stage })
             });
-
-            const data = await response.json();
-            if (data.response) {
-                addMessage(data.response);
-            } else {
-                addMessage('Sorry, I encountered an error. Please try again.');
-            }
-        } catch (error) {
-            addMessage('Sorry, I\'m having trouble connecting. Please check your connection.');
+            const data = await res.json();
+            addMessage(data.response || 'Sorry, I encountered an error. Please try again.');
+        } catch {
+            addMessage("Sorry, I'm having trouble connecting. Please check your connection.");
         }
     }
 
@@ -45,19 +63,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    messageInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            sendButton.click();
-        }
+    messageInput.addEventListener('keypress', e => {
+        if (e.key === 'Enter') sendButton.click();
     });
 
     samplePrompts.forEach(prompt => {
         prompt.addEventListener('click', () => {
-            messageInput.value = prompt.textContent;
+            messageInput.value = prompt.textContent.replace(/"/g, '');
             sendButton.click();
         });
     });
 
-    // Initial greeting
-    addMessage('Hello! I\'m TravelChatter, your travel companion copilot. How can I help you with your business trip today?');
+    addMessage("Hello! I'm TravelChatter, your travel companion copilot. How can I help you today?");
 });

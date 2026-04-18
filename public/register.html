@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lockton Track - Sign In</title>
+    <title>Lockton Track - Create Account</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body class="auth-page">
@@ -12,42 +12,42 @@
             <h1>Lockton Track</h1>
             <p>The Intelligent Travel Companion</p>
         </div>
-        <h2>Sign In</h2>
+        <h2>Create Account</h2>
         <div id="error-message" class="error-message hidden"></div>
+        <div id="success-message" class="success-message hidden"></div>
         <input id="email" type="email" placeholder="Email" autocomplete="email">
-        <input id="password" type="password" placeholder="Password" autocomplete="current-password">
-        <button id="login-button">Sign In</button>
-        <p class="auth-link">Don't have an account? <a href="register.html">Create one</a></p>
+        <input id="password" type="password" placeholder="Password (min 6 characters)" autocomplete="new-password">
+        <button id="register-button">Create Account</button>
+        <p class="auth-link">Already have an account? <a href="index.html">Sign in</a></p>
     </div>
     <script>
-        if (localStorage.getItem('authToken')) {
-            window.location.href = 'chat.html';
-        }
-
-        async function handleLogin() {
+        async function handleRegister() {
             const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
             const errorEl = document.getElementById('error-message');
+            const successEl = document.getElementById('success-message');
             errorEl.classList.add('hidden');
+            successEl.classList.add('hidden');
 
-            const res = await fetch('/login', {
+            const res = await fetch('/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password })
             });
             const data = await res.json();
-            if (data.success && data.token) {
-                localStorage.setItem('authToken', data.token);
-                window.location.href = 'chat.html';
+            if (data.success) {
+                successEl.textContent = 'Account created! Redirecting to sign in...';
+                successEl.classList.remove('hidden');
+                setTimeout(() => window.location.href = 'index.html', 1500);
             } else {
-                errorEl.textContent = data.error || 'Login failed.';
+                errorEl.textContent = data.error || 'Registration failed.';
                 errorEl.classList.remove('hidden');
             }
         }
 
-        document.getElementById('login-button').addEventListener('click', handleLogin);
+        document.getElementById('register-button').addEventListener('click', handleRegister);
         document.getElementById('password').addEventListener('keypress', e => {
-            if (e.key === 'Enter') handleLogin();
+            if (e.key === 'Enter') handleRegister();
         });
     </script>
 </body>

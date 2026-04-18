@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lockton Track</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-left">
+                <h1>Lockton Track</h1>
+                <p>The Intelligent Travel Companion Copilot</p>
+            </div>
+            <div class="header-right">
+                <span id="auth-status"></span>
+                <button id="logout-button" class="secondary-button">Logout</button>
+            </div>
+        </header>
+
+        <div class="stage-selector">
+            <label for="stage">Trip Stage:</label>
+            <select id="stage">
+                <option value="planning">Planning</option>
+                <option value="approval">Approval</option>
+                <option value="travel">During Travel</option>
+                <option value="issues">Issues</option>
+                <option value="post">Post-Trip</option>
+            </select>
+        </div>
+
+        <div class="chat-container">
+            <div id="chat-messages"></div>
+            <div class="input-container">
+                <input type="text" id="message-input" placeholder="Ask me anything about your trip...">
+                <button id="send-button">Send</button>
+            </div>
+        </div>
+
+        <div class="sample-prompts">
+            <h3>Sample Prompts</h3>
+            <ul>
+                <li>"What do I need for my trip to London next week?"</li>
+                <li>"Do I need approval for this flight option?"</li>
+                <li>"What happens if I book a cheaper but non-refundable fare?"</li>
+                <li>"My flight was canceled — what should I do now?"</li>
+                <li>"Who do I contact for help right now?"</li>
+                <li>"What do I still need to do after this trip?"</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

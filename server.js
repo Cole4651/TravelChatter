@@ -1,10 +1,26 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const OpenAI = require('openai');
 require('dotenv').config();
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/travelchatter';
+const JWT_SECRET = process.env.JWT_SECRET || 'travelchatter_secret';
+
+const User = require('./models/User');
+
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+}).then(() => {
+  console.log('MongoDB connected');
+}).catch((error) => {
+  console.error('MongoDB connection error:', error);
+});
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -29,7 +45,6 @@ const tripStages = {
   post: "after trip"
 };
 
-// System prompt for the copilot
 const systemPrompt = `
 You are TravelChatter, an intelligent travel companion copilot for business travelers.
 You help with planning, approvals, travel issues, and follow-up.
@@ -38,11 +53,77 @@ Current policies: ${JSON.stringify(travelPolicies)}
 Stages: ${JSON.stringify(tripStages)}
 `;
 
-app.post('/chat', async (req, res) => {
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!token) {
+    return res.status(401).json({ error: 'Missing auth token' });
+  }
+
+  jwt.verify(token, JWT_SECRET, async (error, payload) => {
+    if (error || !payload || !payload.email) {
+      return res.status(401).json({ error: 'Invalid auth token' });
+    }
+
+    const user = await User.findOne({ email: payload.email });
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    req.user = user;
+    next();
+  });
+}
+
+app.post('/register', async (req, res) => {
+  const email = (req.body.email || '').toLowerCase().trim();
+  const password = req.body.password || '';
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required.' });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+  }
+
+  const existingUser = await User.findOne({ email });
+  if (existingUser) {
+    return res.status(409).json({ error: 'An account with that email already exists.' });
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  await User.create({ email, passwordHash });
+
+  res.json({ success: true, message: 'Account created successfully.' });
+});
+
+app.post('/login', async (req, res) => {
+  const email = (req.body.email || '').toLowerCase().trim();
+  const password = req.body.password || '';
+
+  const user = await User.findOne({ email });
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid email or password.' });
+  }
+
+  const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+  if (!passwordMatch) {
+    return res.status(401).json({ error: 'Invalid email or password.' });
+  }
+
+  const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+  res.json({ success: true, token, email: user.email });
+});
+
+app.get('/me', authenticateToken, (req, res) => {
+  res.json({ success: true, email: req.user.email });
+});
+
+app.post('/chat', authenticateToken, async (req, res) => {
   const userMessage = req.body.message;
   const stage = req.body.stage || 'planning';
 
-  // Mock responses for demo without API key
   const mockResponses = {
     planning: {
       "what do i need": "For your trip, you'll need: passport valid for 6 months, visa if required, company approval for flights over $500, and expense policy review.",
@@ -73,7 +154,6 @@ app.post('/chat', async (req, res) => {
   let response = "I'm here to help with your travel needs. Can you be more specific?";
 
   if (!openai) {
-    // Use mock responses
     const stageResponses = mockResponses[stage] || {};
     for (const key in stageResponses) {
       if (userMessage.toLowerCase().includes(key)) {
@@ -86,12 +166,12 @@ app.post('/chat', async (req, res) => {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: 'gpt-3.5-turbo',
       messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `Stage: ${stage}. User: ${userMessage}` }
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Stage: ${stage}. User: ${userMessage}` }
       ],
-      max_tokens: 500
+      max_tokens: 500,
     });
 
     response = completion.choices[0].message.content;
