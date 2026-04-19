@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem('authToken');
     if (!token) {
-        window.location.href = 'index.html';
+        window.location.href = 'login.html';
         return;
     }
 
@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(data => {
             if (!data.success) {
                 localStorage.removeItem('authToken');
-                window.location.href = 'index.html';
+                window.location.href = 'login.html';
                 return;
             }
             document.getElementById('auth-status').textContent = data.email;
@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('logout-button').addEventListener('click', () => {
         localStorage.removeItem('authToken');
-        window.location.href = 'index.html';
+        window.location.href = 'login.html';
     });
 
     const messageInput = document.getElementById('message-input');

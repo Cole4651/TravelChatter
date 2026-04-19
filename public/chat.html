@@ -3,24 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lockton Track</title>
+    <title>Travel Chatter</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="chat-page">
+    <nav class="nav">
+        <a href="index.html" class="nav-brand">Travel Chatter</a>
+        <div class="nav-links">
+            <span class="nav-user" id="auth-status"></span>
+            <button id="logout-button" class="secondary-button">Logout</button>
+        </div>
+    </nav>
+
     <div class="container">
-        <header>
-            <div class="header-left">
-                <h1>Lockton Track</h1>
-                <p>The Intelligent Travel Companion Copilot</p>
-            </div>
-            <div class="header-right">
-                <span id="auth-status"></span>
-                <button id="logout-button" class="secondary-button">Logout</button>
-            </div>
-        </header>
+        <div class="page-heading">
+            <h1>Your Travel Copilot</h1>
+            <p>Ask anything about planning, approvals, in-trip issues, or follow-up.</p>
+        </div>
 
         <div class="stage-selector">
-            <label for="stage">Trip Stage:</label>
+            <label for="stage">Trip stage:</label>
             <select id="stage">
                 <option value="planning">Planning</option>
                 <option value="approval">Approval</option>
@@ -39,14 +41,14 @@
         </div>
 
         <div class="sample-prompts">
-            <h3>Sample Prompts</h3>
+            <h3>Sample prompts</h3>
             <ul>
-                <li>"What do I need for my trip to London next week?"</li>
-                <li>"Do I need approval for this flight option?"</li>
-                <li>"What happens if I book a cheaper but non-refundable fare?"</li>
-                <li>"My flight was canceled — what should I do now?"</li>
-                <li>"Who do I contact for help right now?"</li>
-                <li>"What do I still need to do after this trip?"</li>
+                <li>What do I need for my trip to London next week?</li>
+                <li>Do I need approval for this flight option?</li>
+                <li>What happens if I book a cheaper but non-refundable fare?</li>
+                <li>My flight was canceled — what should I do now?</li>
+                <li>Who do I contact for help right now?</li>
+                <li>What do I still need to do after this trip?</li>
             </ul>
         </div>
     </div>
