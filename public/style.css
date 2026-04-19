@@ -897,20 +897,33 @@ body.landing-page {
 
 .icon-button {
     background: transparent;
-    border: 1px solid var(--border-strong);
-    color: var(--text-muted);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
     padding: 4px 10px;
     border-radius: 6px;
     font-size: 1rem;
     line-height: 1;
     cursor: pointer;
     flex-shrink: 0;
+    transition: all 0.15s;
 }
 
 .icon-button:hover {
-    background: rgba(239, 68, 68, 0.15);
-    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+    color: #fecaca;
+}
+
+.danger-button {
+    background-color: transparent;
+    border: 1px solid rgba(239, 68, 68, 0.4);
     color: #fca5a5;
+}
+
+.danger-button:hover {
+    background-color: rgba(239, 68, 68, 0.15);
+    border-color: #ef4444;
+    color: #fecaca;
 }
 
 .itinerary-form {
