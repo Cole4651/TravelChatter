@@ -22,22 +22,14 @@
             <p>Organize every trip and chat with your AI copilot for each one.</p>
         </div>
 
-        <div class="card">
-            <h3 class="card-title">Create a new trip</h3>
-            <div id="create-error" class="error-message hidden"></div>
-            <div class="form-grid">
-                <input id="trip-name" type="text" placeholder="Trip name (e.g. London Client Visit)">
-                <input id="trip-destination" type="text" placeholder="Destination">
-                <input id="trip-start" type="date" placeholder="Start date">
-                <input id="trip-end" type="date" placeholder="End date">
-                <input id="trip-purpose" type="text" placeholder="Purpose (e.g. Q2 sales review)" class="full-width">
-            </div>
-            <button id="create-button">Create Trip</button>
+        <div class="section-header">
+            <h2 class="section-title">Your trips</h2>
+            <a href="new-trip.html" class="btn-primary btn-sm">+ New Trip</a>
         </div>
 
         <div id="trips-list" class="trips-list"></div>
         <div id="trips-empty" class="empty-state hidden">
-            <p>No trips yet. Create your first trip above to get started.</p>
+            <p>No trips yet. <a href="new-trip.html">Create your first one →</a></p>
         </div>
     </div>
 
@@ -111,41 +103,6 @@
             div.textContent = str;
             return div.innerHTML;
         }
-
-        document.getElementById('create-button').addEventListener('click', async () => {
-            const errorEl = document.getElementById('create-error');
-            errorEl.classList.add('hidden');
-
-            const body = {
-                name: document.getElementById('trip-name').value.trim(),
-                destination: document.getElementById('trip-destination').value.trim(),
-                startDate: document.getElementById('trip-start').value || null,
-                endDate: document.getElementById('trip-end').value || null,
-                purpose: document.getElementById('trip-purpose').value.trim(),
-            };
-
-            if (!body.name) {
-                errorEl.textContent = 'Trip name is required.';
-                errorEl.classList.remove('hidden');
-                return;
-            }
-
-            const res = await fetch('/api/trips', {
-                method: 'POST',
-                headers: authHeaders,
-                body: JSON.stringify(body),
-            });
-            const data = await res.json();
-            if (data.success) {
-                ['trip-name', 'trip-destination', 'trip-start', 'trip-end', 'trip-purpose'].forEach(id => {
-                    document.getElementById(id).value = '';
-                });
-                loadTrips();
-            } else {
-                errorEl.textContent = data.error || 'Failed to create trip.';
-                errorEl.classList.remove('hidden');
-            }
-        });
 
         loadTrips();
     </script>

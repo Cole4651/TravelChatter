@@ -435,8 +435,12 @@ app.post('/api/trips/:tripId/chat', authenticateToken, chatLimiter, loadUserTrip
     })),
   };
 
+  const today = new Date().toISOString().slice(0, 10);
   const systemPrompt = `${baseSystemPrompt}
-Current trip context: ${JSON.stringify(tripContext)}`;
+Today's date: ${today}
+Current trip context: ${JSON.stringify(tripContext)}
+
+You have a tool called add_itinerary_item. Call it when the user asks to add, schedule, book, or plan something for this trip. Pick the best type (flight, hotel, meeting, activity, or other). Resolve relative dates using today's date. After calling, briefly confirm what you added.`;
 
   if (!groq) {
     const response = "AI service is not configured. Please set GROQ_API_KEY in .env to enable chat.";
@@ -446,6 +450,44 @@ Current trip context: ${JSON.stringify(tripContext)}`;
       content: response,
     });
     return res.json({ success: true, response });
+  }
+
+  const tools = [{
+    type: 'function',
+    function: {
+      name: 'add_itinerary_item',
+      description: "Add an item to this trip's itinerary. Use when the user asks to add, schedule, or book anything for the trip.",
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short title, e.g. "Flight to LHR" or "Dinner at Dishoom".' },
+          type: { type: 'string', enum: ['flight', 'hotel', 'meeting', 'activity', 'other'] },
+          date: { type: 'string', description: 'ISO date YYYY-MM-DD. Omit if the user did not specify.' },
+          time: { type: 'string', description: '24h time HH:MM. Omit if not specified.' },
+          location: { type: 'string', description: 'Airport code, address, venue, or city. Omit if unknown.' },
+          notes: { type: 'string', description: 'Any extra detail the user mentioned.' },
+        },
+        required: ['title', 'type'],
+      },
+    },
+  }];
+
+  async function runTool(name, args) {
+    if (name === 'add_itinerary_item') {
+      const title = cap(args.title || '', LIMITS.itemTitle).trim();
+      if (!title) return { success: false, error: 'Title required.' };
+      req.trip.itinerary.push({
+        title,
+        type: ['flight', 'hotel', 'meeting', 'activity', 'other'].includes(args.type) ? args.type : 'other',
+        date: args.date || null,
+        time: cap(args.time || '', 20),
+        location: cap(args.location || '', LIMITS.location).trim(),
+        notes: cap(args.notes || '', LIMITS.notes).trim(),
+      });
+      await req.trip.save();
+      return { success: true, added: title };
+    }
+    return { success: false, error: 'Unknown tool.' };
   }
 
   try {
@@ -458,19 +500,51 @@ Current trip context: ${JSON.stringify(tripContext)}`;
       ...history.map((m) => ({ role: m.role, content: m.content })),
     ];
 
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages,
-      max_tokens: 600,
-    });
+    let finalText = '';
+    const maxIterations = 4;
 
-    const response = completion.choices[0].message.content;
+    for (let i = 0; i < maxIterations; i++) {
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages,
+        tools,
+        tool_choice: 'auto',
+        max_tokens: 600,
+      });
+      const msg = completion.choices[0].message;
+
+      if (!msg.tool_calls || msg.tool_calls.length === 0) {
+        finalText = msg.content || '';
+        break;
+      }
+
+      messages.push({
+        role: 'assistant',
+        content: msg.content || '',
+        tool_calls: msg.tool_calls,
+      });
+
+      for (const tc of msg.tool_calls) {
+        let args = {};
+        try { args = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
+        const result = await runTool(tc.function.name, args);
+        messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: JSON.stringify(result),
+        });
+      }
+    }
+
+    if (!finalText) finalText = 'Done.';
+
     await ChatMessage.create({
       tripId: req.trip._id,
       role: 'assistant',
-      content: response,
+      content: finalText,
     });
-    res.json({ success: true, response });
+
+    res.json({ success: true, response: finalText, trip: req.trip });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'AI service unavailable' });

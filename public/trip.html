@@ -26,12 +26,15 @@
             </div>
             <div class="trip-header-actions">
                 <a id="explore-link" href="#" class="btn-primary btn-sm">Discover things to do</a>
-                <select id="trip-status">
-                    <option value="planning">Planning</option>
-                    <option value="approval">Approval</option>
-                    <option value="travel">Traveling</option>
-                    <option value="post">Post-Trip</option>
-                </select>
+                <label class="status-field">
+                    <span class="status-field-label">Stage:</span>
+                    <select id="trip-status" class="status-select">
+                        <option value="planning">Planning</option>
+                        <option value="approval">Approval</option>
+                        <option value="travel">Traveling</option>
+                        <option value="post">Post-Trip</option>
+                    </select>
+                </label>
                 <button id="delete-trip" class="danger-button">Delete</button>
             </div>
         </div>
@@ -133,7 +136,9 @@
             if (dates) metaParts.push(dates);
             if (trip.purpose) metaParts.push(trip.purpose);
             document.getElementById('trip-meta').textContent = metaParts.join(' • ');
-            document.getElementById('trip-status').value = trip.status;
+            const statusEl = document.getElementById('trip-status');
+            statusEl.value = trip.status;
+            applyStatusColor(statusEl, trip.status);
             document.getElementById('explore-link').href = `explore.html?id=${trip._id}`;
             renderItinerary(trip.itinerary || []);
             renderWishlist(trip.wishlist || []);
@@ -246,7 +251,15 @@
             container.scrollTop = container.scrollHeight;
         }
 
+        function applyStatusColor(selectEl, status) {
+            ['planning', 'approval', 'travel', 'post'].forEach(s => {
+                selectEl.classList.remove(`status-${s}`);
+            });
+            selectEl.classList.add(`status-${status}`);
+        }
+
         document.getElementById('trip-status').addEventListener('change', async (e) => {
+            applyStatusColor(e.target, e.target.value);
             await fetch(`/api/trips/${tripId}`, {
                 method: 'PATCH',
                 headers: authHeaders,
@@ -310,6 +323,10 @@
                 });
                 const data = await res.json();
                 addMessage(data.response || 'Sorry, I encountered an error.', false);
+                if (data.trip) {
+                    renderItinerary(data.trip.itinerary || []);
+                    renderWishlist(data.trip.wishlist || []);
+                }
             } catch {
                 addMessage("Sorry, I'm having trouble connecting.", false);
             }

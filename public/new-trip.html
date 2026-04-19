@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Trip - Travel Chatter</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="chat-page">
+    <nav class="nav">
+        <a href="index.html" class="nav-brand">Travel Chatter</a>
+        <div class="nav-links">
+            <a href="trips.html">My Trips</a>
+            <span class="nav-user" id="auth-status"></span>
+            <button id="logout-button" class="secondary-button">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <a href="trips.html" class="back-link">← All trips</a>
+
+        <div class="page-heading">
+            <h1>Create a new trip</h1>
+            <p>Give your trip a name and a destination. You can fill in the rest later.</p>
+        </div>
+
+        <div class="card">
+            <div id="create-error" class="error-message hidden"></div>
+            <div class="form-grid">
+                <input id="trip-name" type="text" placeholder="Trip name (e.g. London Client Visit)" class="full-width">
+                <input id="trip-destination" type="text" placeholder="Destination" class="full-width">
+                <input id="trip-start" type="date" placeholder="Start date">
+                <input id="trip-end" type="date" placeholder="End date">
+                <input id="trip-purpose" type="text" placeholder="Purpose (e.g. Q2 sales review)" class="full-width">
+            </div>
+            <div class="form-actions">
+                <a href="trips.html" class="btn-secondary">Cancel</a>
+                <button id="create-button">Create Trip</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('authToken');
+        if (!token) window.location.href = 'login.html';
+
+        const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+        document.getElementById('logout-button').addEventListener('click', () => {
+            localStorage.removeItem('authToken');
+            window.location.href = 'login.html';
+        });
+
+        fetch('/me', { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    localStorage.removeItem('authToken');
+                    window.location.href = 'login.html';
+                    return;
+                }
+                document.getElementById('auth-status').textContent = data.email;
+            });
+
+        async function handleCreate() {
+            const errorEl = document.getElementById('create-error');
+            errorEl.classList.add('hidden');
+
+            const body = {
+                name: document.getElementById('trip-name').value.trim(),
+                destination: document.getElementById('trip-destination').value.trim(),
+                startDate: document.getElementById('trip-start').value || null,
+                endDate: document.getElementById('trip-end').value || null,
+                purpose: document.getElementById('trip-purpose').value.trim(),
+            };
+
+            if (!body.name) {
+                errorEl.textContent = 'Trip name is required.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            const res = await fetch('/api/trips', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            if (data.success && data.trip) {
+                window.location.href = `trip.html?id=${data.trip._id}`;
+            } else {
+                errorEl.textContent = data.error || 'Failed to create trip.';
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        document.getElementById('create-button').addEventListener('click', handleCreate);
+        document.getElementById('trip-name').focus();
+    </script>
+</body>
+</html>

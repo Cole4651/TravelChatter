@@ -815,6 +815,46 @@ body.landing-page {
     cursor: pointer;
 }
 
+.status-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-field-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.status-select {
+    font-weight: 600;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.status-select.status-planning {
+    background: rgba(99, 102, 241, 0.15) !important;
+    border-color: rgba(99, 102, 241, 0.4) !important;
+    color: #a5a8ff !important;
+}
+
+.status-select.status-approval {
+    background: rgba(245, 158, 11, 0.15) !important;
+    border-color: rgba(245, 158, 11, 0.4) !important;
+    color: #fcd34d !important;
+}
+
+.status-select.status-travel {
+    background: rgba(34, 197, 94, 0.15) !important;
+    border-color: rgba(34, 197, 94, 0.4) !important;
+    color: #86efac !important;
+}
+
+.status-select.status-post {
+    background: rgba(156, 163, 175, 0.15) !important;
+    border-color: rgba(156, 163, 175, 0.4) !important;
+    color: #d1d5db !important;
+}
+
 .trip-layout {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -934,6 +974,42 @@ body.landing-page {
     padding: 8px 14px;
     font-size: 0.88rem;
     border-radius: 6px;
+}
+
+.form-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    align-items: center;
+    margin-top: 4px;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    gap: 12px;
+}
+
+.section-title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.01em;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    gap: 12px;
+}
+
+.card-header .card-title {
+    margin: 0;
 }
 
 /* Wishlist */
