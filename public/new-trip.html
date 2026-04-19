@@ -28,7 +28,10 @@
             <div id="create-error" class="error-message hidden"></div>
             <div class="form-grid">
                 <input id="trip-name" type="text" placeholder="Trip name (e.g. London Client Visit)" class="full-width">
-                <input id="trip-destination" type="text" placeholder="Destination" class="full-width">
+                <div class="full-width autocomplete">
+                    <input id="trip-destination" type="text" placeholder="Destination (country, city, or both)" autocomplete="off">
+                    <ul id="destination-suggestions" class="autocomplete-list hidden"></ul>
+                </div>
                 <input id="trip-start" type="date" placeholder="Start date">
                 <input id="trip-end" type="date" placeholder="End date">
                 <input id="trip-purpose" type="text" placeholder="Purpose (e.g. Q2 sales review)" class="full-width">
@@ -96,6 +99,106 @@
 
         document.getElementById('create-button').addEventListener('click', handleCreate);
         document.getElementById('trip-name').focus();
+
+        const COUNTRIES = [
+            'Afghanistan','Albania','Algeria','Andorra','Angola','Antigua and Barbuda','Argentina','Armenia','Australia','Austria',
+            'Azerbaijan','Bahamas','Bahrain','Bangladesh','Barbados','Belarus','Belgium','Belize','Benin','Bhutan','Bolivia',
+            'Bosnia and Herzegovina','Botswana','Brazil','Brunei','Bulgaria','Burkina Faso','Burundi','Cabo Verde','Cambodia',
+            'Cameroon','Canada','Central African Republic','Chad','Chile','China','Colombia','Comoros','Congo','Costa Rica',
+            "Côte d'Ivoire",'Croatia','Cuba','Cyprus','Czechia','Denmark','Djibouti','Dominica','Dominican Republic','Ecuador',
+            'Egypt','El Salvador','Equatorial Guinea','Eritrea','Estonia','Eswatini','Ethiopia','Fiji','Finland','France','Gabon',
+            'Gambia','Georgia','Germany','Ghana','Greece','Grenada','Guatemala','Guinea','Guinea-Bissau','Guyana','Haiti',
+            'Honduras','Hungary','Iceland','India','Indonesia','Iran','Iraq','Ireland','Israel','Italy','Jamaica','Japan','Jordan',
+            'Kazakhstan','Kenya','Kiribati','Kuwait','Kyrgyzstan','Laos','Latvia','Lebanon','Lesotho','Liberia','Libya',
+            'Liechtenstein','Lithuania','Luxembourg','Madagascar','Malawi','Malaysia','Maldives','Mali','Malta','Marshall Islands',
+            'Mauritania','Mauritius','Mexico','Micronesia','Moldova','Monaco','Mongolia','Montenegro','Morocco','Mozambique',
+            'Myanmar','Namibia','Nauru','Nepal','Netherlands','New Zealand','Nicaragua','Niger','Nigeria','North Korea',
+            'North Macedonia','Norway','Oman','Pakistan','Palau','Palestine','Panama','Papua New Guinea','Paraguay','Peru',
+            'Philippines','Poland','Portugal','Qatar','Romania','Russia','Rwanda','Saint Kitts and Nevis','Saint Lucia',
+            'Saint Vincent and the Grenadines','Samoa','San Marino','Sao Tome and Principe','Saudi Arabia','Senegal','Serbia',
+            'Seychelles','Sierra Leone','Singapore','Slovakia','Slovenia','Solomon Islands','Somalia','South Africa','South Korea',
+            'South Sudan','Spain','Sri Lanka','Sudan','Suriname','Sweden','Switzerland','Syria','Taiwan','Tajikistan','Tanzania',
+            'Thailand','Timor-Leste','Togo','Tonga','Trinidad and Tobago','Tunisia','Turkey','Turkmenistan','Tuvalu','Uganda',
+            'Ukraine','United Arab Emirates','United Kingdom','United States','Uruguay','Uzbekistan','Vanuatu','Vatican City',
+            'Venezuela','Vietnam','Yemen','Zambia','Zimbabwe'
+        ];
+
+        const destInput = document.getElementById('trip-destination');
+        const suggestList = document.getElementById('destination-suggestions');
+        let activeIndex = -1;
+        let filtered = [];
+
+        function renderSuggestions() {
+            suggestList.innerHTML = '';
+            if (!filtered.length) {
+                suggestList.classList.add('hidden');
+                return;
+            }
+            suggestList.classList.remove('hidden');
+            filtered.forEach((country, i) => {
+                const li = document.createElement('li');
+                li.textContent = country;
+                li.className = i === activeIndex ? 'is-active' : '';
+                li.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    selectCountry(country);
+                });
+                suggestList.appendChild(li);
+            });
+        }
+
+        function selectCountry(country) {
+            destInput.value = country;
+            filtered = [];
+            activeIndex = -1;
+            renderSuggestions();
+        }
+
+        destInput.addEventListener('input', () => {
+            const q = destInput.value.trim().toLowerCase();
+            if (!q) {
+                filtered = [];
+            } else {
+                filtered = COUNTRIES
+                    .filter(c => c.toLowerCase().includes(q))
+                    .sort((a, b) => {
+                        const aStarts = a.toLowerCase().startsWith(q);
+                        const bStarts = b.toLowerCase().startsWith(q);
+                        if (aStarts && !bStarts) return -1;
+                        if (!aStarts && bStarts) return 1;
+                        return a.localeCompare(b);
+                    })
+                    .slice(0, 8);
+            }
+            activeIndex = -1;
+            renderSuggestions();
+        });
+
+        destInput.addEventListener('keydown', (e) => {
+            if (!filtered.length) return;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                activeIndex = (activeIndex + 1) % filtered.length;
+                renderSuggestions();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                activeIndex = activeIndex <= 0 ? filtered.length - 1 : activeIndex - 1;
+                renderSuggestions();
+            } else if (e.key === 'Enter' && activeIndex >= 0) {
+                e.preventDefault();
+                selectCountry(filtered[activeIndex]);
+            } else if (e.key === 'Escape') {
+                filtered = [];
+                renderSuggestions();
+            }
+        });
+
+        destInput.addEventListener('blur', () => {
+            setTimeout(() => {
+                filtered = [];
+                renderSuggestions();
+            }, 120);
+        });
     </script>
 </body>
 </html>

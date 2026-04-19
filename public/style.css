@@ -1041,6 +1041,65 @@ body.landing-page {
     margin: 8px 0 0;
 }
 
+/* Autocomplete dropdown */
+
+.autocomplete {
+    position: relative;
+}
+
+.autocomplete input {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.92rem;
+    font-family: inherit;
+    transition: border-color 0.15s;
+}
+
+.autocomplete input::placeholder {
+    color: var(--text-faint);
+}
+
+.autocomplete input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.autocomplete-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    list-style: none;
+    padding: 6px;
+    margin: 0;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 20;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.autocomplete-list li {
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 0.92rem;
+    color: var(--text);
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.autocomplete-list li:hover,
+.autocomplete-list li.is-active {
+    background: var(--accent-soft);
+    color: #c7cbff;
+}
+
 /* People bar + members */
 
 .trip-people {
