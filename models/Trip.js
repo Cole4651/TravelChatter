@@ -13,6 +13,14 @@ const itineraryItemSchema = new mongoose.Schema({
   notes: { type: String },
 });
 
+const wishlistItemSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  type: { type: String, default: 'activity' },
+  description: { type: String },
+  location: { type: String },
+  addedAt: { type: Date, default: Date.now },
+});
+
 const tripSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -31,6 +39,7 @@ const tripSchema = new mongoose.Schema({
     default: 'planning',
   },
   itinerary: [itineraryItemSchema],
+  wishlist: [wishlistItemSchema],
   createdAt: { type: Date, default: Date.now },
 });
 

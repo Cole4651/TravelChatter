@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discover - Travel Chatter</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="chat-page">
+    <nav class="nav">
+        <a href="index.html" class="nav-brand">Travel Chatter</a>
+        <div class="nav-links">
+            <a href="trips.html">My Trips</a>
+            <span class="nav-user" id="auth-status"></span>
+            <button id="logout-button" class="secondary-button">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container explore-container">
+        <a id="back-link" href="trips.html" class="back-link">← Back to trip</a>
+        <div class="explore-header">
+            <h1 id="explore-heading">Discover things to do</h1>
+            <p id="explore-sub">Swipe right to save to your wishlist, left to skip.</p>
+        </div>
+
+        <div id="loading-state" class="empty-state">Finding things to do…</div>
+
+        <div id="unfamiliar-state" class="empty-state hidden">
+            <p>I'm not familiar with this destination — I don't want to invent places for you.</p>
+            <p>Try a more specific destination (e.g. "Tokyo, Japan" instead of just a country), or add itinerary items manually.</p>
+        </div>
+
+        <div id="error-state" class="error-message hidden"></div>
+
+        <div class="deck-wrapper hidden" id="deck-wrapper">
+            <div class="deck" id="deck"></div>
+            <div class="deck-actions">
+                <button type="button" class="swipe-btn swipe-skip" id="btn-skip" aria-label="Skip">✕</button>
+                <button type="button" class="swipe-btn swipe-like" id="btn-like" aria-label="Like">♥</button>
+            </div>
+            <p class="deck-counter" id="deck-counter"></p>
+        </div>
+
+        <div id="done-state" class="empty-state hidden">
+            <p>That's all of them! <span id="done-summary"></span></p>
+            <p><a id="done-link" href="#">← Back to your trip</a></p>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('authToken');
+        if (!token) window.location.href = 'login.html';
+
+        const params = new URLSearchParams(window.location.search);
+        const tripId = params.get('id');
+        if (!tripId) window.location.href = 'trips.html';
+
+        const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+        document.getElementById('logout-button').addEventListener('click', () => {
+            localStorage.removeItem('authToken');
+            window.location.href = 'login.html';
+        });
+
+        document.getElementById('back-link').href = `trip.html?id=${tripId}`;
+        document.getElementById('done-link').href = `trip.html?id=${tripId}`;
+
+        fetch('/me', { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    localStorage.removeItem('authToken');
+                    window.location.href = 'login.html';
+                    return;
+                }
+                document.getElementById('auth-status').textContent = data.email;
+            });
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str == null ? '' : String(str);
+            return div.innerHTML;
+        }
+
+        const deck = document.getElementById('deck');
+        const deckWrapper = document.getElementById('deck-wrapper');
+        const loadingState = document.getElementById('loading-state');
+        const unfamiliarState = document.getElementById('unfamiliar-state');
+        const errorState = document.getElementById('error-state');
+        const doneState = document.getElementById('done-state');
+        const doneSummary = document.getElementById('done-summary');
+        const deckCounter = document.getElementById('deck-counter');
+
+        let suggestions = [];
+        let currentIndex = 0;
+        let likedCount = 0;
+
+        async function loadTripHeader() {
+            const res = await fetch(`/api/trips/${tripId}`, { headers: authHeaders });
+            const data = await res.json();
+            if (data.success && data.trip) {
+                document.getElementById('explore-heading').textContent = `Discover in ${data.trip.destination || 'your destination'}`;
+            }
+        }
+
+        async function loadSuggestions() {
+            try {
+                const res = await fetch(`/api/trips/${tripId}/suggestions`, {
+                    method: 'POST',
+                    headers: authHeaders,
+                });
+                const data = await res.json();
+                loadingState.classList.add('hidden');
+
+                if (!data.success) {
+                    errorState.textContent = data.error || 'Could not load suggestions.';
+                    errorState.classList.remove('hidden');
+                    return;
+                }
+                if (!data.familiar || !data.suggestions.length) {
+                    unfamiliarState.classList.remove('hidden');
+                    return;
+                }
+
+                suggestions = data.suggestions;
+                deckWrapper.classList.remove('hidden');
+                renderDeck();
+                updateCounter();
+            } catch (e) {
+                loadingState.classList.add('hidden');
+                errorState.textContent = 'Could not load suggestions.';
+                errorState.classList.remove('hidden');
+            }
+        }
+
+        function renderDeck() {
+            deck.innerHTML = '';
+            // Render next 3 cards stacked, top one is interactive.
+            for (let i = Math.min(currentIndex + 2, suggestions.length - 1); i >= currentIndex; i--) {
+                const s = suggestions[i];
+                const card = document.createElement('div');
+                card.className = 'swipe-card';
+                const depth = i - currentIndex;
+                if (depth === 0) card.classList.add('is-top');
+                else if (depth === 1) card.classList.add('is-next');
+                else card.classList.add('is-later');
+                card.dataset.index = String(i);
+                card.innerHTML = `
+                    <div class="swipe-card-type type-${escapeHtml(s.type || 'activity')}">${escapeHtml(s.type || 'activity')}</div>
+                    <h2 class="swipe-card-title">${escapeHtml(s.title)}</h2>
+                    ${s.location ? `<p class="swipe-card-location">${escapeHtml(s.location)}</p>` : ''}
+                    <p class="swipe-card-description">${escapeHtml(s.description || '')}</p>
+                    <div class="swipe-badge swipe-badge-like">LIKE</div>
+                    <div class="swipe-badge swipe-badge-skip">SKIP</div>
+                `;
+                deck.appendChild(card);
+            }
+            attachSwipeToTop();
+        }
+
+        function updateCounter() {
+            const remaining = Math.max(0, suggestions.length - currentIndex);
+            deckCounter.textContent = remaining > 0 ? `${remaining} left · ${likedCount} saved` : '';
+        }
+
+        function attachSwipeToTop() {
+            const top = deck.querySelector('.swipe-card.is-top');
+            if (!top) return;
+
+            let startX = 0;
+            let startY = 0;
+            let currentX = 0;
+            let dragging = false;
+            let pointerId = null;
+
+            function onDown(e) {
+                dragging = true;
+                pointerId = e.pointerId;
+                startX = e.clientX;
+                startY = e.clientY;
+                currentX = 0;
+                top.setPointerCapture(e.pointerId);
+                top.classList.add('is-dragging');
+            }
+            function onMove(e) {
+                if (!dragging || e.pointerId !== pointerId) return;
+                currentX = e.clientX - startX;
+                const dy = e.clientY - startY;
+                const rotation = currentX * 0.06;
+                top.style.transform = `translate(${currentX}px, ${dy * 0.4}px) rotate(${rotation}deg)`;
+                const mag = Math.min(Math.abs(currentX) / 140, 1);
+                top.style.setProperty('--like-opacity', currentX > 0 ? mag : 0);
+                top.style.setProperty('--skip-opacity', currentX < 0 ? mag : 0);
+            }
+            function onUp(e) {
+                if (!dragging || e.pointerId !== pointerId) return;
+                dragging = false;
+                top.classList.remove('is-dragging');
+                try { top.releasePointerCapture(e.pointerId); } catch (_) {}
+
+                const threshold = 120;
+                if (currentX > threshold) {
+                    commitSwipe(top, 'like');
+                } else if (currentX < -threshold) {
+                    commitSwipe(top, 'skip');
+                } else {
+                    top.style.transform = '';
+                    top.style.setProperty('--like-opacity', 0);
+                    top.style.setProperty('--skip-opacity', 0);
+                }
+            }
+
+            top.addEventListener('pointerdown', onDown);
+            top.addEventListener('pointermove', onMove);
+            top.addEventListener('pointerup', onUp);
+            top.addEventListener('pointercancel', onUp);
+        }
+
+        async function commitSwipe(cardEl, direction) {
+            const idx = Number(cardEl.dataset.index);
+            cardEl.classList.add(direction === 'like' ? 'swipe-off-right' : 'swipe-off-left');
+
+            if (direction === 'like') {
+                const s = suggestions[idx];
+                likedCount++;
+                try {
+                    await fetch(`/api/trips/${tripId}/wishlist`, {
+                        method: 'POST',
+                        headers: authHeaders,
+                        body: JSON.stringify({
+                            title: s.title,
+                            type: s.type,
+                            description: s.description,
+                            location: s.location,
+                        }),
+                    });
+                } catch (_) {}
+            }
+
+            setTimeout(() => {
+                currentIndex = idx + 1;
+                if (currentIndex >= suggestions.length) {
+                    deckWrapper.classList.add('hidden');
+                    doneState.classList.remove('hidden');
+                    doneSummary.textContent = likedCount > 0
+                        ? `Saved ${likedCount} to your wishlist.`
+                        : `Nothing saved this time.`;
+                } else {
+                    renderDeck();
+                    updateCounter();
+                }
+            }, 320);
+        }
+
+        document.getElementById('btn-like').addEventListener('click', () => {
+            const top = deck.querySelector('.swipe-card.is-top');
+            if (top) commitSwipe(top, 'like');
+        });
+        document.getElementById('btn-skip').addEventListener('click', () => {
+            const top = deck.querySelector('.swipe-card.is-top');
+            if (top) commitSwipe(top, 'skip');
+        });
+
+        loadTripHeader();
+        loadSuggestions();
+    </script>
+</body>
+</html>

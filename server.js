@@ -208,6 +208,90 @@ app.delete('/api/trips/:tripId/itinerary/:itemId', authenticateToken, loadUserTr
   res.json({ success: true, trip: req.trip });
 });
 
+// Suggestions (AI-generated activities)
+
+app.post('/api/trips/:tripId/suggestions', authenticateToken, loadUserTrip, async (req, res) => {
+  if (!groq) {
+    return res.status(503).json({ error: 'AI service is not configured.' });
+  }
+
+  const destination = (req.trip.destination || '').trim();
+  if (!destination) {
+    return res.status(400).json({ error: 'Trip has no destination set. Add one to get suggestions.' });
+  }
+
+  const prompt = `You are a travel activity recommender.
+
+Destination: ${destination}
+Trip purpose: ${req.trip.purpose || '(not specified)'}
+Status: ${req.trip.status}
+
+First, honestly assess: are you familiar with this destination? A destination is familiar if you know it well enough to name real, specific places, neighborhoods, or attractions there. If it's fictional, extremely obscure, ambiguous, or just a country without a city, mark unfamiliar.
+
+Respond ONLY with valid JSON matching this schema:
+{
+  "familiar": boolean,
+  "suggestions": [
+    {
+      "title": "specific real place or activity name",
+      "type": "activity" | "food" | "culture" | "outdoor" | "nightlife" | "landmark",
+      "description": "one sentence, max 140 chars, what it is and the vibe",
+      "location": "neighborhood or area"
+    }
+  ]
+}
+
+If familiar: return exactly 10 diverse suggestions (mix food, culture, outdoor, landmarks, nightlife).
+If unfamiliar: return { "familiar": false, "suggestions": [] } — do not invent places.`;
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      max_tokens: 1500,
+    });
+
+    const raw = completion.choices[0].message.content;
+    const parsed = JSON.parse(raw);
+    res.json({
+      success: true,
+      familiar: parsed.familiar === true,
+      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+    });
+  } catch (error) {
+    console.error('Suggestions error:', error);
+    res.status(500).json({ error: 'Failed to generate suggestions.' });
+  }
+});
+
+// Wishlist
+
+app.post('/api/trips/:tripId/wishlist', authenticateToken, loadUserTrip, async (req, res) => {
+  const { title, type, description, location } = req.body;
+  if (!title || !title.trim()) {
+    return res.status(400).json({ error: 'Title required.' });
+  }
+  req.trip.wishlist.push({
+    title: title.trim(),
+    type: type || 'activity',
+    description: description || '',
+    location: location || '',
+  });
+  await req.trip.save();
+  res.json({ success: true, trip: req.trip });
+});
+
+app.delete('/api/trips/:tripId/wishlist/:itemId', authenticateToken, loadUserTrip, async (req, res) => {
+  const item = req.trip.wishlist.id(req.params.itemId);
+  if (!item) {
+    return res.status(404).json({ error: 'Wishlist item not found.' });
+  }
+  item.deleteOne();
+  await req.trip.save();
+  res.json({ success: true, trip: req.trip });
+});
+
 // Chat (per-trip)
 
 app.get('/api/trips/:tripId/messages', authenticateToken, loadUserTrip, async (req, res) => {
@@ -241,6 +325,12 @@ app.post('/api/trips/:tripId/chat', authenticateToken, loadUserTrip, async (req,
       time: item.time,
       location: item.location,
       notes: item.notes,
+    })),
+    wishlist: req.trip.wishlist.map((item) => ({
+      title: item.title,
+      type: item.type,
+      location: item.location,
+      description: item.description,
     })),
   };
 

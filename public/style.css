@@ -917,6 +917,271 @@ body.landing-page {
     margin-top: 8px;
 }
 
+.btn-sm {
+    padding: 8px 14px;
+    font-size: 0.88rem;
+    border-radius: 6px;
+}
+
+/* Wishlist */
+
+.wishlist-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+}
+
+.wishlist-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.wishlist-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.wishlist-item-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.wishlist-item-title {
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+}
+
+.wishlist-item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.wishlist-item-type {
+    background: var(--accent-soft);
+    color: #c7cbff;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+}
+
+.wishlist-item-description {
+    font-size: 0.88rem;
+    color: var(--text-faint);
+}
+
+/* Explore / swipe deck */
+
+.explore-container {
+    max-width: 480px;
+    padding-bottom: 60px;
+}
+
+.explore-header {
+    margin-bottom: 24px;
+}
+
+.explore-header h1 {
+    margin: 0 0 6px;
+    font-size: 1.6rem;
+    letter-spacing: -0.02em;
+}
+
+.explore-header p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+.deck-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.deck {
+    position: relative;
+    width: 100%;
+    max-width: 380px;
+    height: 460px;
+    perspective: 1000px;
+    touch-action: none;
+}
+
+.swipe-card {
+    position: absolute;
+    inset: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    cursor: grab;
+    user-select: none;
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.3, 1), opacity 0.3s;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+    will-change: transform;
+    --like-opacity: 0;
+    --skip-opacity: 0;
+}
+
+.swipe-card.is-top {
+    z-index: 3;
+}
+
+.swipe-card.is-next {
+    z-index: 2;
+    transform: scale(0.95) translateY(14px);
+    opacity: 0.85;
+}
+
+.swipe-card.is-later {
+    z-index: 1;
+    transform: scale(0.9) translateY(28px);
+    opacity: 0.6;
+}
+
+.swipe-card.is-dragging {
+    transition: none;
+    cursor: grabbing;
+}
+
+.swipe-card.swipe-off-right {
+    transform: translate(150%, 0) rotate(25deg) !important;
+    opacity: 0;
+}
+
+.swipe-card.swipe-off-left {
+    transform: translate(-150%, 0) rotate(-25deg) !important;
+    opacity: 0;
+}
+
+.swipe-card-type {
+    align-self: flex-start;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 16px;
+    background: var(--accent-soft);
+    color: #c7cbff;
+}
+
+.swipe-card-type.type-food { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+.swipe-card-type.type-culture { background: rgba(168, 85, 247, 0.15); color: #d8b4fe; }
+.swipe-card-type.type-outdoor { background: rgba(34, 197, 94, 0.15); color: #86efac; }
+.swipe-card-type.type-nightlife { background: rgba(236, 72, 153, 0.15); color: #f9a8d4; }
+.swipe-card-type.type-landmark { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
+
+.swipe-card-title {
+    margin: 0 0 8px;
+    font-size: 1.5rem;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+}
+
+.swipe-card-location {
+    margin: 0 0 16px;
+    color: var(--text-muted);
+    font-size: 0.92rem;
+}
+
+.swipe-card-description {
+    margin: 0;
+    color: var(--text);
+    font-size: 0.98rem;
+    line-height: 1.55;
+}
+
+.swipe-badge {
+    position: absolute;
+    top: 28px;
+    padding: 8px 18px;
+    border-radius: 10px;
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    border: 3px solid;
+    pointer-events: none;
+    transition: opacity 0.1s;
+}
+
+.swipe-badge-like {
+    right: 28px;
+    color: #22c55e;
+    border-color: #22c55e;
+    transform: rotate(15deg);
+    opacity: var(--like-opacity, 0);
+}
+
+.swipe-badge-skip {
+    left: 28px;
+    color: #ef4444;
+    border-color: #ef4444;
+    transform: rotate(-15deg);
+    opacity: var(--skip-opacity, 0);
+}
+
+.deck-actions {
+    display: flex;
+    gap: 20px;
+}
+
+.swipe-btn {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    font-size: 1.6rem;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--border-strong);
+    background: var(--surface);
+    transition: all 0.15s;
+}
+
+.swipe-skip {
+    color: #ef4444;
+}
+
+.swipe-skip:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+}
+
+.swipe-like {
+    color: #22c55e;
+}
+
+.swipe-like:hover {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: #22c55e;
+}
+
+.deck-counter {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin: 0;
+}
+
 @media (max-width: 900px) {
     .trip-layout {
         grid-template-columns: 1fr;

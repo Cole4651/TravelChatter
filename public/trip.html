@@ -25,6 +25,7 @@
                 <p class="trip-meta" id="trip-meta"></p>
             </div>
             <div class="trip-header-actions">
+                <a id="explore-link" href="#" class="btn-primary btn-sm">Discover things to do</a>
                 <select id="trip-status">
                     <option value="planning">Planning</option>
                     <option value="approval">Approval</option>
@@ -33,6 +34,11 @@
                 </select>
                 <button id="delete-trip" class="secondary-button">Delete</button>
             </div>
+        </div>
+
+        <div class="card wishlist-card hidden" id="wishlist-card">
+            <h3 class="card-title">Wishlist</h3>
+            <div id="wishlist-list" class="wishlist-list"></div>
         </div>
 
         <div class="trip-layout">
@@ -128,7 +134,46 @@
             if (trip.purpose) metaParts.push(trip.purpose);
             document.getElementById('trip-meta').textContent = metaParts.join(' • ');
             document.getElementById('trip-status').value = trip.status;
+            document.getElementById('explore-link').href = `explore.html?id=${trip._id}`;
             renderItinerary(trip.itinerary || []);
+            renderWishlist(trip.wishlist || []);
+        }
+
+        function renderWishlist(items) {
+            const card = document.getElementById('wishlist-card');
+            const list = document.getElementById('wishlist-list');
+            if (!items.length) {
+                card.classList.add('hidden');
+                return;
+            }
+            card.classList.remove('hidden');
+            list.innerHTML = '';
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'wishlist-item';
+                div.innerHTML = `
+                    <div class="wishlist-item-body">
+                        <div class="wishlist-item-title">${escapeHtml(item.title)}</div>
+                        <div class="wishlist-item-meta">
+                            ${item.type ? `<span class="wishlist-item-type">${escapeHtml(item.type)}</span>` : ''}
+                            ${item.location ? `<span>${escapeHtml(item.location)}</span>` : ''}
+                        </div>
+                        ${item.description ? `<div class="wishlist-item-description">${escapeHtml(item.description)}</div>` : ''}
+                    </div>
+                    <button class="icon-button" data-id="${item._id}" title="Remove">×</button>
+                `;
+                div.querySelector('button').addEventListener('click', () => removeWishlistItem(item._id));
+                list.appendChild(div);
+            });
+        }
+
+        async function removeWishlistItem(itemId) {
+            const res = await fetch(`/api/trips/${tripId}/wishlist/${itemId}`, {
+                method: 'DELETE',
+                headers: authHeaders,
+            });
+            const data = await res.json();
+            if (data.success) renderWishlist(data.trip.wishlist || []);
         }
 
         function renderItinerary(items) {
