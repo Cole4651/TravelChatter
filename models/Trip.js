@@ -21,6 +21,24 @@ const wishlistItemSchema = new mongoose.Schema({
   addedAt: { type: Date, default: Date.now },
 });
 
+const memberSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  email: { type: String, required: true },
+  addedAt: { type: Date, default: Date.now },
+});
+
+const itineraryRequestSchema = new mongoose.Schema({
+  proposedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  proposedByEmail: { type: String, required: true },
+  title: { type: String, required: true },
+  type: { type: String, default: 'other' },
+  date: { type: Date },
+  time: { type: String },
+  location: { type: String },
+  notes: { type: String },
+  createdAt: { type: Date, default: Date.now },
+});
+
 const tripSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -42,6 +60,8 @@ const tripSchema = new mongoose.Schema({
   longitude: { type: Number, default: null },
   itinerary: [itineraryItemSchema],
   wishlist: [wishlistItemSchema],
+  members: [memberSchema],
+  itineraryRequests: [itineraryRequestSchema],
   createdAt: { type: Date, default: Date.now },
 });
 

@@ -26,7 +26,8 @@
             </div>
             <div class="trip-header-actions">
                 <a id="explore-link" href="#" class="btn-primary btn-sm">Discover things to do</a>
-                <label class="status-field">
+                <a id="members-link" href="#" class="btn-secondary btn-sm">Members</a>
+                <label class="status-field" id="status-field">
                     <span class="status-field-label">Stage:</span>
                     <select id="trip-status" class="status-select">
                         <option value="planning">Planning</option>
@@ -39,6 +40,13 @@
             </div>
         </div>
 
+        <div class="trip-people" id="trip-people"></div>
+
+        <div class="card requests-card hidden" id="requests-card">
+            <h3 class="card-title">Pending requests</h3>
+            <div id="requests-list" class="requests-list"></div>
+        </div>
+
         <div class="card wishlist-card hidden" id="wishlist-card">
             <h3 class="card-title">Wishlist</h3>
             <div id="wishlist-list" class="wishlist-list"></div>
@@ -47,10 +55,10 @@
         <div class="trip-layout">
             <section class="trip-col">
                 <div class="card">
-                    <h3 class="card-title">Itinerary</h3>
+                    <h3 class="card-title" id="itinerary-heading">Itinerary</h3>
                     <div id="itinerary-list" class="itinerary-list"></div>
                     <div id="itinerary-empty" class="empty-state hidden">
-                        <p>No items yet. Add your first one below.</p>
+                        <p id="itinerary-empty-text">No items yet. Add your first one below.</p>
                     </div>
 
                     <div class="form-grid itinerary-form">
@@ -68,6 +76,7 @@
                         <input id="item-notes" type="text" placeholder="Notes (optional)" class="full-width">
                     </div>
                     <button id="add-item-button">Add to itinerary</button>
+                    <p id="request-note" class="form-note hidden">You're a collaborator, so items are submitted as requests for the trip owner to approve.</p>
                 </div>
             </section>
 
@@ -128,6 +137,8 @@
             return fmt(start || end);
         }
 
+        let isOwner = false;
+
         function renderTrip(trip) {
             document.getElementById('trip-name').textContent = trip.name;
             const metaParts = [];
@@ -140,8 +151,109 @@
             statusEl.value = trip.status;
             applyStatusColor(statusEl, trip.status);
             document.getElementById('explore-link').href = `explore.html?id=${trip._id}`;
+            document.getElementById('members-link').href = `trip-members.html?id=${trip._id}`;
+
+            applyRoleUI();
+            renderPeople(trip);
+            renderRequests(trip.itineraryRequests || []);
             renderItinerary(trip.itinerary || []);
             renderWishlist(trip.wishlist || []);
+        }
+
+        function applyRoleUI() {
+            const deleteBtn = document.getElementById('delete-trip');
+            const statusField = document.getElementById('status-field');
+            const addBtn = document.getElementById('add-item-button');
+            const heading = document.getElementById('itinerary-heading');
+            const emptyText = document.getElementById('itinerary-empty-text');
+            const requestNote = document.getElementById('request-note');
+
+            if (isOwner) {
+                deleteBtn.classList.remove('hidden');
+                statusField.classList.remove('hidden');
+                addBtn.textContent = 'Add to itinerary';
+                heading.textContent = 'Itinerary';
+                emptyText.textContent = 'No items yet. Add your first one below.';
+                requestNote.classList.add('hidden');
+            } else {
+                deleteBtn.classList.add('hidden');
+                statusField.classList.add('hidden');
+                addBtn.textContent = 'Submit request';
+                heading.textContent = 'Itinerary';
+                emptyText.textContent = 'No items yet. Submit a suggestion below.';
+                requestNote.classList.remove('hidden');
+            }
+        }
+
+        function renderPeople(trip) {
+            const container = document.getElementById('trip-people');
+            container.innerHTML = '';
+            const count = 1 + (trip.members || []).length;
+            const label = document.createElement('span');
+            label.className = 'trip-people-label';
+            label.textContent = `${count} ${count === 1 ? 'person' : 'people'} on this trip`;
+            container.appendChild(label);
+
+            const pill = document.createElement('span');
+            pill.className = 'role-pill';
+            pill.textContent = isOwner ? 'You are the owner' : 'You are a collaborator';
+            container.appendChild(pill);
+
+            const link = document.createElement('a');
+            link.className = 'trip-people-link';
+            link.href = `trip-members.html?id=${trip._id}`;
+            link.textContent = isOwner ? 'Manage →' : 'View →';
+            container.appendChild(link);
+        }
+
+        function renderRequests(requests) {
+            const card = document.getElementById('requests-card');
+            const list = document.getElementById('requests-list');
+            if (!isOwner || !requests.length) {
+                card.classList.add('hidden');
+                return;
+            }
+            card.classList.remove('hidden');
+            list.innerHTML = '';
+            requests.forEach(r => {
+                const div = document.createElement('div');
+                div.className = 'request-item';
+                const dateStr = r.date ? new Date(r.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+                div.innerHTML = `
+                    <div class="request-item-body">
+                        <div class="request-item-head">
+                            <span class="itinerary-item-type type-${escapeHtml(r.type)}">${escapeHtml(r.type)}</span>
+                            <span class="request-item-title">${escapeHtml(r.title)}</span>
+                        </div>
+                        <div class="request-item-meta">
+                            ${dateStr ? `<span>${dateStr}</span>` : ''}
+                            ${r.time ? `<span>${escapeHtml(r.time)}</span>` : ''}
+                            ${r.location ? `<span>${escapeHtml(r.location)}</span>` : ''}
+                        </div>
+                        ${r.notes ? `<div class="request-item-notes">${escapeHtml(r.notes)}</div>` : ''}
+                        <div class="request-item-from">Suggested by ${escapeHtml(r.proposedByEmail)}</div>
+                    </div>
+                    <div class="request-actions">
+                        <button class="btn-sm approve-btn">Approve</button>
+                        <button class="btn-sm reject-btn danger-button">Reject</button>
+                    </div>
+                `;
+                div.querySelector('.approve-btn').addEventListener('click', () => decideRequest(r._id, 'approve'));
+                div.querySelector('.reject-btn').addEventListener('click', () => decideRequest(r._id, 'reject'));
+                list.appendChild(div);
+            });
+        }
+
+        async function decideRequest(requestId, action) {
+            const res = await fetch(`/api/trips/${tripId}/requests/${requestId}/${action}`, {
+                method: 'POST',
+                headers: authHeaders,
+            });
+            const data = await res.json();
+            if (data.success) {
+                renderRequests(data.trip.itineraryRequests || []);
+                renderItinerary(data.trip.itinerary || []);
+            }
         }
 
         function renderWishlist(items) {
@@ -227,6 +339,7 @@
                 window.location.href = 'trips.html';
                 return;
             }
+            isOwner = !!data.isOwner;
             renderTrip(data.trip);
         }
 
@@ -285,7 +398,11 @@
             };
             if (!body.title) return;
 
-            const res = await fetch(`/api/trips/${tripId}/itinerary`, {
+            const endpoint = isOwner
+                ? `/api/trips/${tripId}/itinerary`
+                : `/api/trips/${tripId}/requests`;
+
+            const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify(body),
@@ -296,6 +413,7 @@
                     document.getElementById(id).value = '';
                 });
                 renderItinerary(data.trip.itinerary || []);
+                renderRequests(data.trip.itineraryRequests || []);
             }
         });
 
@@ -326,6 +444,7 @@
                 if (data.trip) {
                     renderItinerary(data.trip.itinerary || []);
                     renderWishlist(data.trip.wishlist || []);
+                    renderRequests(data.trip.itineraryRequests || []);
                 }
             } catch {
                 addMessage("Sorry, I'm having trouble connecting.", false);

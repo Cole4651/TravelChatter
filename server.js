@@ -189,11 +189,25 @@ async function geocodeDestination(destination) {
 }
 
 async function loadUserTrip(req, res, next) {
-  const trip = await Trip.findOne({ _id: req.params.tripId, userId: req.user._id });
+  const trip = await Trip.findOne({
+    _id: req.params.tripId,
+    $or: [
+      { userId: req.user._id },
+      { 'members.userId': req.user._id },
+    ],
+  });
   if (!trip) {
     return res.status(404).json({ error: 'Trip not found' });
   }
   req.trip = trip;
+  req.isOwner = String(trip.userId) === String(req.user._id);
+  next();
+}
+
+function requireOwner(req, res, next) {
+  if (!req.isOwner) {
+    return res.status(403).json({ error: 'Only the trip owner can do that.' });
+  }
   next();
 }
 
@@ -247,7 +261,12 @@ app.get('/me', authenticateToken, (req, res) => {
 // Trips
 
 app.get('/api/trips', authenticateToken, apiLimiter, async (req, res) => {
-  const trips = await Trip.find({ userId: req.user._id }).sort({ createdAt: -1 });
+  const trips = await Trip.find({
+    $or: [
+      { userId: req.user._id },
+      { 'members.userId': req.user._id },
+    ],
+  }).sort({ createdAt: -1 });
 
   const needGeocoding = trips.filter(
     (t) => t.destination && t.destination.trim() && (t.latitude == null || t.longitude == null)
@@ -262,7 +281,12 @@ app.get('/api/trips', authenticateToken, apiLimiter, async (req, res) => {
     }
   }
 
-  res.json({ success: true, trips });
+  const withOwnership = trips.map((t) => ({
+    ...t.toObject(),
+    isOwner: String(t.userId) === String(req.user._id),
+  }));
+
+  res.json({ success: true, trips: withOwnership });
 });
 
 app.post('/api/trips', authenticateToken, apiLimiter, async (req, res) => {
@@ -290,10 +314,10 @@ app.post('/api/trips', authenticateToken, apiLimiter, async (req, res) => {
 });
 
 app.get('/api/trips/:tripId', authenticateToken, apiLimiter, loadUserTrip, (req, res) => {
-  res.json({ success: true, trip: req.trip });
+  res.json({ success: true, trip: req.trip, isOwner: req.isOwner });
 });
 
-app.patch('/api/trips/:tripId', authenticateToken, apiLimiter, loadUserTrip, async (req, res) => {
+app.patch('/api/trips/:tripId', authenticateToken, apiLimiter, loadUserTrip, requireOwner, async (req, res) => {
   const stringCaps = {
     name: LIMITS.tripName,
     destination: LIMITS.destination,
@@ -319,7 +343,7 @@ app.patch('/api/trips/:tripId', authenticateToken, apiLimiter, loadUserTrip, asy
   res.json({ success: true, trip: req.trip });
 });
 
-app.delete('/api/trips/:tripId', authenticateToken, apiLimiter, loadUserTrip, async (req, res) => {
+app.delete('/api/trips/:tripId', authenticateToken, apiLimiter, loadUserTrip, requireOwner, async (req, res) => {
   await ChatMessage.deleteMany({ tripId: req.trip._id });
   await req.trip.deleteOne();
   res.json({ success: true });
@@ -327,7 +351,7 @@ app.delete('/api/trips/:tripId', authenticateToken, apiLimiter, loadUserTrip, as
 
 // Itinerary
 
-app.post('/api/trips/:tripId/itinerary', authenticateToken, apiLimiter, loadUserTrip, async (req, res) => {
+app.post('/api/trips/:tripId/itinerary', authenticateToken, apiLimiter, loadUserTrip, requireOwner, async (req, res) => {
   const title = cap(req.body.title || '', LIMITS.itemTitle).trim();
   if (!title) {
     return res.status(400).json({ error: 'Itinerary item title is required.' });
@@ -346,12 +370,88 @@ app.post('/api/trips/:tripId/itinerary', authenticateToken, apiLimiter, loadUser
   res.json({ success: true, trip: req.trip });
 });
 
-app.delete('/api/trips/:tripId/itinerary/:itemId', authenticateToken, apiLimiter, loadUserTrip, async (req, res) => {
+app.delete('/api/trips/:tripId/itinerary/:itemId', authenticateToken, apiLimiter, loadUserTrip, requireOwner, async (req, res) => {
   const item = req.trip.itinerary.id(req.params.itemId);
   if (!item) {
     return res.status(404).json({ error: 'Itinerary item not found.' });
   }
   item.deleteOne();
+  await req.trip.save();
+  res.json({ success: true, trip: req.trip });
+});
+
+// Members
+
+app.post('/api/trips/:tripId/members', authenticateToken, apiLimiter, loadUserTrip, requireOwner, async (req, res) => {
+  const email = cap(req.body.email || '', LIMITS.email).toLowerCase().trim();
+  if (!email) return res.status(400).json({ error: 'Email is required.' });
+  if (email === req.user.email) {
+    return res.status(400).json({ error: 'You are already the owner of this trip.' });
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) {
+    return res.status(404).json({ error: 'No registered user with that email. They need to create an account first.' });
+  }
+
+  if (req.trip.members.some((m) => String(m.userId) === String(user._id))) {
+    return res.status(409).json({ error: 'That person is already on this trip.' });
+  }
+
+  req.trip.members.push({ userId: user._id, email: user.email });
+  await req.trip.save();
+  res.json({ success: true, trip: req.trip });
+});
+
+app.delete('/api/trips/:tripId/members/:memberId', authenticateToken, apiLimiter, loadUserTrip, requireOwner, async (req, res) => {
+  const member = req.trip.members.id(req.params.memberId);
+  if (!member) return res.status(404).json({ error: 'Member not found.' });
+  member.deleteOne();
+  await req.trip.save();
+  res.json({ success: true, trip: req.trip });
+});
+
+// Itinerary requests (collaborators propose, owner approves)
+
+app.post('/api/trips/:tripId/requests', authenticateToken, apiLimiter, loadUserTrip, async (req, res) => {
+  const title = cap(req.body.title || '', LIMITS.itemTitle).trim();
+  if (!title) return res.status(400).json({ error: 'Title is required.' });
+
+  req.trip.itineraryRequests.push({
+    proposedBy: req.user._id,
+    proposedByEmail: req.user.email,
+    title,
+    type: ['flight', 'hotel', 'meeting', 'activity', 'other'].includes(req.body.type) ? req.body.type : 'other',
+    date: req.body.date || null,
+    time: cap(req.body.time || '', 20),
+    location: cap(req.body.location || '', LIMITS.location).trim(),
+    notes: cap(req.body.notes || '', LIMITS.notes).trim(),
+  });
+  await req.trip.save();
+  res.json({ success: true, trip: req.trip });
+});
+
+app.post('/api/trips/:tripId/requests/:requestId/approve', authenticateToken, apiLimiter, loadUserTrip, requireOwner, async (req, res) => {
+  const request = req.trip.itineraryRequests.id(req.params.requestId);
+  if (!request) return res.status(404).json({ error: 'Request not found.' });
+
+  req.trip.itinerary.push({
+    title: request.title,
+    type: request.type,
+    date: request.date,
+    time: request.time,
+    location: request.location,
+    notes: request.notes,
+  });
+  request.deleteOne();
+  await req.trip.save();
+  res.json({ success: true, trip: req.trip });
+});
+
+app.post('/api/trips/:tripId/requests/:requestId/reject', authenticateToken, apiLimiter, loadUserTrip, requireOwner, async (req, res) => {
+  const request = req.trip.itineraryRequests.id(req.params.requestId);
+  if (!request) return res.status(404).json({ error: 'Request not found.' });
+  request.deleteOne();
   await req.trip.save();
   res.json({ success: true, trip: req.trip });
 });
@@ -484,11 +584,17 @@ app.post('/api/trips/:tripId/chat', authenticateToken, chatLimiter, loadUserTrip
   };
 
   const today = new Date().toISOString().slice(0, 10);
+  const userRole = req.isOwner ? 'owner' : 'collaborator';
   const systemPrompt = `${baseSystemPrompt}
 Today's date: ${today}
+The user chatting with you right now is the trip ${userRole} (${req.user.email}).
 Current trip context: ${JSON.stringify(tripContext)}
 
 You have a tool called add_itinerary_item for adding events to this trip's itinerary.
+
+${req.isOwner
+  ? 'As the owner, tool calls from you add items directly to the itinerary.'
+  : `As a collaborator, tool calls from you create PENDING REQUESTS that the trip owner must approve. When the tool returns {success: true, pending: true}, respond with a brief confirmation like "Got it — I've submitted your request; the trip owner will review it." Do NOT mention "$500", "manager approval", or company expense policies here — that's a different kind of approval and is unrelated to this collaboration flow.`}
 
 CRITICAL RULES for add_itinerary_item:
 1. Every "add" request starts FRESH. Ignore details from earlier messages, earlier add requests, existing itinerary entries, or trip metadata.
@@ -581,16 +687,33 @@ BAD — never do this:
         };
       }
 
-      req.trip.itinerary.push({
+      const payload = {
         title,
         type,
         date: args.date || null,
         time: cap(args.time || '', 20),
         location: cap(args.location || '', LIMITS.location).trim(),
         notes: cap(args.notes || '', LIMITS.notes).trim(),
+      };
+
+      if (req.isOwner) {
+        req.trip.itinerary.push(payload);
+        await req.trip.save();
+        return { success: true, added: title };
+      }
+
+      req.trip.itineraryRequests.push({
+        proposedBy: req.user._id,
+        proposedByEmail: req.user.email,
+        ...payload,
       });
       await req.trip.save();
-      return { success: true, added: title };
+      return {
+        success: true,
+        requested: title,
+        pending: true,
+        note: 'User is a collaborator, not the owner. Item was submitted as a pending request for the owner to approve. Tell the user this.',
+      };
     }
     return { success: false, error: 'Unknown tool.' };
   }
@@ -652,7 +775,7 @@ BAD — never do this:
       content: finalText,
     });
 
-    res.json({ success: true, response: finalText, trip: req.trip });
+    res.json({ success: true, response: finalText, trip: req.trip, isOwner: req.isOwner });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'AI service unavailable' });

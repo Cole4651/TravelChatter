@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trip Members - Travel Chatter</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="chat-page">
+    <nav class="nav">
+        <a href="index.html" class="nav-brand">Travel Chatter</a>
+        <div class="nav-links">
+            <a href="trips.html">My Trips</a>
+            <span class="nav-user" id="auth-status"></span>
+            <button id="logout-button" class="secondary-button">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <a href="trips.html" class="back-link">← All trips</a>
+
+        <div class="page-heading">
+            <h1 id="page-title">Trip members</h1>
+            <p>Add people going on this trip. They'll be able to view details and suggest itinerary items.</p>
+        </div>
+
+        <div class="card" id="add-card">
+            <h3 class="card-title">Add a member</h3>
+            <div id="add-error" class="error-message hidden"></div>
+            <div class="form-grid">
+                <input id="member-email" type="email" placeholder="Email address" class="full-width">
+            </div>
+            <div class="form-actions">
+                <button id="add-member">Add</button>
+            </div>
+            <p class="form-note">The person must already have a Travel Chatter account.</p>
+        </div>
+
+        <div class="card">
+            <h3 class="card-title">On this trip</h3>
+            <div id="members-list" class="members-list"></div>
+        </div>
+
+        <div class="form-actions">
+            <a id="skip-link" href="#" class="btn-secondary">Skip for now →</a>
+            <a id="done-link" href="#" class="btn-primary">Go to trip</a>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('authToken');
+        if (!token) window.location.href = 'login.html';
+
+        const params = new URLSearchParams(window.location.search);
+        const tripId = params.get('id');
+        if (!tripId) window.location.href = 'trips.html';
+
+        const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+        document.getElementById('logout-button').addEventListener('click', () => {
+            localStorage.removeItem('authToken');
+            window.location.href = 'login.html';
+        });
+
+        let currentUserEmail = '';
+        fetch('/me', { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    localStorage.removeItem('authToken');
+                    window.location.href = 'login.html';
+                    return;
+                }
+                currentUserEmail = data.email;
+                document.getElementById('auth-status').textContent = data.email;
+            });
+
+        document.getElementById('skip-link').href = `trip.html?id=${tripId}`;
+        document.getElementById('done-link').href = `trip.html?id=${tripId}`;
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str == null ? '' : String(str);
+            return div.innerHTML;
+        }
+
+        let isOwner = false;
+
+        async function loadTrip() {
+            const res = await fetch(`/api/trips/${tripId}`, { headers: authHeaders });
+            const data = await res.json();
+            if (!data.success) {
+                window.location.href = 'trips.html';
+                return;
+            }
+            isOwner = data.isOwner;
+            document.getElementById('page-title').textContent = `Members — ${data.trip.name}`;
+            if (!isOwner) {
+                document.getElementById('add-card').classList.add('hidden');
+            }
+            renderMembers(data.trip);
+        }
+
+        function renderMembers(trip) {
+            const list = document.getElementById('members-list');
+            list.innerHTML = '';
+
+            const owner = document.createElement('div');
+            owner.className = 'member-item';
+            owner.innerHTML = `
+                <div class="member-avatar">${escapeHtml(initials(trip.members && trip.members.length ? '' : ''))}</div>
+                <div class="member-body">
+                    <div class="member-email">Trip owner</div>
+                    <div class="member-meta">Full control over this trip</div>
+                </div>
+                <span class="member-role role-owner">Owner</span>
+            `;
+            list.appendChild(owner);
+
+            (trip.members || []).forEach(m => {
+                const item = document.createElement('div');
+                item.className = 'member-item';
+                item.innerHTML = `
+                    <div class="member-avatar">${escapeHtml(initials(m.email))}</div>
+                    <div class="member-body">
+                        <div class="member-email">${escapeHtml(m.email)}</div>
+                        <div class="member-meta">Can view and suggest itinerary items</div>
+                    </div>
+                    ${isOwner ? `<button class="icon-button" data-id="${m._id}" title="Remove">×</button>` : '<span class="member-role role-collab">Collaborator</span>'}
+                `;
+                const btn = item.querySelector('button');
+                if (btn) btn.addEventListener('click', () => removeMember(m._id));
+                list.appendChild(item);
+            });
+
+            if ((trip.members || []).length === 0 && !isOwner) {
+                const note = document.createElement('p');
+                note.className = 'form-note';
+                note.textContent = 'No collaborators yet.';
+                list.appendChild(note);
+            }
+        }
+
+        function initials(email) {
+            if (!email) return '?';
+            return email.slice(0, 2).toUpperCase();
+        }
+
+        async function removeMember(memberId) {
+            if (!confirm('Remove this person from the trip?')) return;
+            const res = await fetch(`/api/trips/${tripId}/members/${memberId}`, {
+                method: 'DELETE',
+                headers: authHeaders,
+            });
+            const data = await res.json();
+            if (data.success) renderMembers(data.trip);
+        }
+
+        document.getElementById('add-member').addEventListener('click', async () => {
+            const emailInput = document.getElementById('member-email');
+            const errorEl = document.getElementById('add-error');
+            errorEl.classList.add('hidden');
+
+            const email = emailInput.value.trim();
+            if (!email) {
+                errorEl.textContent = 'Enter an email.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            const res = await fetch(`/api/trips/${tripId}/members`, {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ email }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                emailInput.value = '';
+                renderMembers(data.trip);
+            } else {
+                errorEl.textContent = data.error || 'Failed to add member.';
+                errorEl.classList.remove('hidden');
+            }
+        });
+
+        loadTrip();
+    </script>
+</body>
+</html>

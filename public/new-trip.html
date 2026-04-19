@@ -87,7 +87,7 @@
             });
             const data = await res.json();
             if (data.success && data.trip) {
-                window.location.href = `trip.html?id=${data.trip._id}`;
+                window.location.href = `trip-members.html?id=${data.trip._id}`;
             } else {
                 errorEl.textContent = data.error || 'Failed to create trip.';
                 errorEl.classList.remove('hidden');
