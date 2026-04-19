@@ -55,13 +55,22 @@
         <div class="trip-layout">
             <section class="trip-col">
                 <div class="card">
-                    <h3 class="card-title" id="itinerary-heading">Itinerary</h3>
+                    <div class="card-header">
+                        <h3 class="card-title" id="itinerary-heading">Itinerary</h3>
+                        <button id="toggle-add-item" class="btn-primary btn-sm">+ Add item</button>
+                    </div>
                     <div id="itinerary-list" class="itinerary-list"></div>
                     <div id="itinerary-empty" class="empty-state hidden">
-                        <p id="itinerary-empty-text">No items yet. Add your first one below.</p>
+                        <p id="itinerary-empty-text">No items yet. Click + Add item above.</p>
                     </div>
+                </div>
 
-                    <div class="form-grid itinerary-form">
+                <div class="card hidden" id="add-item-card">
+                    <div class="card-header">
+                        <h3 class="card-title" id="add-item-heading">Add to itinerary</h3>
+                        <button id="cancel-add-item" class="secondary-button btn-sm">Cancel</button>
+                    </div>
+                    <div class="form-grid">
                         <input id="item-title" type="text" placeholder="Title (e.g. Flight to LHR)">
                         <select id="item-type">
                             <option value="flight">Flight</option>
@@ -75,7 +84,9 @@
                         <input id="item-location" type="text" placeholder="Location" class="full-width">
                         <input id="item-notes" type="text" placeholder="Notes (optional)" class="full-width">
                     </div>
-                    <button id="add-item-button">Add to itinerary</button>
+                    <div class="form-actions">
+                        <button id="add-item-button">Add to itinerary</button>
+                    </div>
                     <p id="request-note" class="form-note hidden">You're a collaborator, so items are submitted as requests for the trip owner to approve.</p>
                 </div>
             </section>
@@ -164,7 +175,8 @@
             const deleteBtn = document.getElementById('delete-trip');
             const statusField = document.getElementById('status-field');
             const addBtn = document.getElementById('add-item-button');
-            const heading = document.getElementById('itinerary-heading');
+            const toggleBtn = document.getElementById('toggle-add-item');
+            const addHeading = document.getElementById('add-item-heading');
             const emptyText = document.getElementById('itinerary-empty-text');
             const requestNote = document.getElementById('request-note');
 
@@ -172,15 +184,17 @@
                 deleteBtn.classList.remove('hidden');
                 statusField.classList.remove('hidden');
                 addBtn.textContent = 'Add to itinerary';
-                heading.textContent = 'Itinerary';
-                emptyText.textContent = 'No items yet. Add your first one below.';
+                toggleBtn.textContent = '+ Add item';
+                addHeading.textContent = 'Add to itinerary';
+                emptyText.textContent = 'No items yet. Click + Add item above.';
                 requestNote.classList.add('hidden');
             } else {
                 deleteBtn.classList.add('hidden');
                 statusField.classList.add('hidden');
                 addBtn.textContent = 'Submit request';
-                heading.textContent = 'Itinerary';
-                emptyText.textContent = 'No items yet. Submit a suggestion below.';
+                toggleBtn.textContent = '+ Suggest item';
+                addHeading.textContent = 'Suggest an itinerary item';
+                emptyText.textContent = 'No items yet. Click + Suggest item above.';
                 requestNote.classList.remove('hidden');
             }
         }
@@ -387,6 +401,31 @@
             if (data.success) window.location.href = 'trips.html';
         });
 
+        const addItemCard = document.getElementById('add-item-card');
+        const toggleAddItem = document.getElementById('toggle-add-item');
+
+        function resetAddItemForm() {
+            ['item-title', 'item-date', 'item-time', 'item-location', 'item-notes'].forEach(id => {
+                document.getElementById(id).value = '';
+            });
+            document.getElementById('item-type').value = 'flight';
+        }
+
+        function openAddItem() {
+            addItemCard.classList.remove('hidden');
+            toggleAddItem.classList.add('hidden');
+            document.getElementById('item-title').focus();
+        }
+
+        function closeAddItem() {
+            addItemCard.classList.add('hidden');
+            toggleAddItem.classList.remove('hidden');
+            resetAddItemForm();
+        }
+
+        toggleAddItem.addEventListener('click', openAddItem);
+        document.getElementById('cancel-add-item').addEventListener('click', closeAddItem);
+
         document.getElementById('add-item-button').addEventListener('click', async () => {
             const body = {
                 title: document.getElementById('item-title').value.trim(),
@@ -409,9 +448,7 @@
             });
             const data = await res.json();
             if (data.success) {
-                ['item-title', 'item-date', 'item-time', 'item-location', 'item-notes'].forEach(id => {
-                    document.getElementById(id).value = '';
-                });
+                closeAddItem();
                 renderItinerary(data.trip.itinerary || []);
                 renderRequests(data.trip.itineraryRequests || []);
             }

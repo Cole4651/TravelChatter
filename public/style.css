@@ -861,6 +861,12 @@ body.landing-page {
     gap: 20px;
 }
 
+.trip-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
 .trip-col .card {
     margin-bottom: 0;
 }
