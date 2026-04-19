@@ -21,7 +21,7 @@
     </div>
     <script>
         if (localStorage.getItem('authToken')) {
-            window.location.href = 'chat.html';
+            window.location.href = 'trips.html';
         }
 
         async function handleLogin() {
@@ -38,7 +38,7 @@
             const data = await res.json();
             if (data.success && data.token) {
                 localStorage.setItem('authToken', data.token);
-                window.location.href = 'chat.html';
+                window.location.href = 'trips.html';
             } else {
                 errorEl.textContent = data.error || 'Login failed.';
                 errorEl.classList.remove('hidden');

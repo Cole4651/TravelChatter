@@ -12,6 +12,8 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/travel
 const JWT_SECRET = process.env.JWT_SECRET || 'travelchatter_secret';
 
 const User = require('./models/User');
+const Trip = require('./models/Trip');
+const ChatMessage = require('./models/ChatMessage');
 
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
@@ -25,7 +27,6 @@ mongoose.connect(MONGODB_URI, {
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
-// Mock data for demo
 const travelPolicies = {
   visa: "Check destination visa requirements 2 weeks in advance",
   approval: "Flights over $500 need manager approval",
@@ -33,20 +34,12 @@ const travelPolicies = {
   expenses: "Submit expense reports within 7 days"
 };
 
-const tripStages = {
-  planning: "preparing for trip",
-  approval: "getting approvals",
-  travel: "on the trip",
-  issues: "handling problems",
-  post: "after trip"
-};
-
-const systemPrompt = `
+const baseSystemPrompt = `
 You are TravelChatter, an intelligent travel companion copilot for business travelers.
 You help with planning, approvals, travel issues, and follow-up.
 Always be helpful, clear, and respect privacy.
-Current policies: ${JSON.stringify(travelPolicies)}
-Stages: ${JSON.stringify(tripStages)}
+Reference the current trip context (destination, dates, itinerary) when answering.
+Company policies: ${JSON.stringify(travelPolicies)}
 `;
 
 const groq = process.env.GROQ_API_KEY
@@ -74,6 +67,17 @@ function authenticateToken(req, res, next) {
     next();
   });
 }
+
+async function loadUserTrip(req, res, next) {
+  const trip = await Trip.findOne({ _id: req.params.tripId, userId: req.user._id });
+  if (!trip) {
+    return res.status(404).json({ error: 'Trip not found' });
+  }
+  req.trip = trip;
+  next();
+}
+
+// Auth
 
 app.post('/register', async (req, res) => {
   const email = (req.body.email || '').toLowerCase().trim();
@@ -120,61 +124,156 @@ app.get('/me', authenticateToken, (req, res) => {
   res.json({ success: true, email: req.user.email });
 });
 
-app.post('/chat', authenticateToken, async (req, res) => {
-  const userMessage = req.body.message;
-  const stage = req.body.stage || 'planning';
+// Trips
 
-  const mockResponses = {
-    planning: {
-      "what do i need": "For your trip, you'll need: passport valid for 6 months, visa if required, company approval for flights over $500, and expense policy review.",
-      "policies": "Company policies include: preferred airlines for discounts, hotel booking through approved vendors, and meal per diems.",
-      "approvals": "You need manager approval for flights over $500. I'll prepare the request for you.",
-      "options": "Flight options: Economy $450 (flexible), Business $1200 (premium). Hotel: Standard $150/night, Premium $250/night."
-    },
-    approval: {
-      "approval": "Your flight request needs approval. I've submitted it to your manager. Status: Pending.",
-      "status": "Approval status: Approved. You can proceed with booking.",
-      "rejected": "Approval was rejected due to budget constraints. Suggested: Choose economy class or adjust dates."
-    },
-    travel: {
-      "delayed": "Flight delayed? Check airline app for updates. If >2 hours, contact travel desk for rebooking assistance.",
-      "contact": "For immediate help: Travel desk 1-800-TRAVEL, or your manager.",
-      "covered": "Covered: Flight changes due to weather. Not covered: Personal delays."
-    },
-    issues: {
-      "canceled": "Flight canceled? I'll help you rebook. Options: Next flight today or refund + new booking.",
-      "help": "Contact airline directly first, then travel desk if needed. Here's the escalation path."
-    },
-    post: {
-      "after": "After trip: Submit expense report within 7 days, complete trip feedback survey.",
-      "follow": "Reminders set: Expense submission due in 3 days, feedback survey."
+app.get('/api/trips', authenticateToken, async (req, res) => {
+  const trips = await Trip.find({ userId: req.user._id }).sort({ createdAt: -1 });
+  res.json({ success: true, trips });
+});
+
+app.post('/api/trips', authenticateToken, async (req, res) => {
+  const { name, destination, startDate, endDate, purpose, status } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'Trip name is required.' });
+  }
+
+  const trip = await Trip.create({
+    userId: req.user._id,
+    name: name.trim(),
+    destination: destination || '',
+    startDate: startDate || null,
+    endDate: endDate || null,
+    purpose: purpose || '',
+    status: status || 'planning',
+  });
+
+  res.json({ success: true, trip });
+});
+
+app.get('/api/trips/:tripId', authenticateToken, loadUserTrip, (req, res) => {
+  res.json({ success: true, trip: req.trip });
+});
+
+app.patch('/api/trips/:tripId', authenticateToken, loadUserTrip, async (req, res) => {
+  const fields = ['name', 'destination', 'startDate', 'endDate', 'purpose', 'status'];
+  for (const field of fields) {
+    if (req.body[field] !== undefined) {
+      req.trip[field] = req.body[field];
     }
+  }
+  await req.trip.save();
+  res.json({ success: true, trip: req.trip });
+});
+
+app.delete('/api/trips/:tripId', authenticateToken, loadUserTrip, async (req, res) => {
+  await ChatMessage.deleteMany({ tripId: req.trip._id });
+  await req.trip.deleteOne();
+  res.json({ success: true });
+});
+
+// Itinerary
+
+app.post('/api/trips/:tripId/itinerary', authenticateToken, loadUserTrip, async (req, res) => {
+  const { title, type, date, time, location, notes } = req.body;
+  if (!title || !title.trim()) {
+    return res.status(400).json({ error: 'Itinerary item title is required.' });
+  }
+
+  req.trip.itinerary.push({
+    title: title.trim(),
+    type: type || 'other',
+    date: date || null,
+    time: time || '',
+    location: location || '',
+    notes: notes || '',
+  });
+
+  await req.trip.save();
+  res.json({ success: true, trip: req.trip });
+});
+
+app.delete('/api/trips/:tripId/itinerary/:itemId', authenticateToken, loadUserTrip, async (req, res) => {
+  const item = req.trip.itinerary.id(req.params.itemId);
+  if (!item) {
+    return res.status(404).json({ error: 'Itinerary item not found.' });
+  }
+  item.deleteOne();
+  await req.trip.save();
+  res.json({ success: true, trip: req.trip });
+});
+
+// Chat (per-trip)
+
+app.get('/api/trips/:tripId/messages', authenticateToken, loadUserTrip, async (req, res) => {
+  const messages = await ChatMessage.find({ tripId: req.trip._id }).sort({ createdAt: 1 });
+  res.json({ success: true, messages });
+});
+
+app.post('/api/trips/:tripId/chat', authenticateToken, loadUserTrip, async (req, res) => {
+  const userMessage = (req.body.message || '').trim();
+  if (!userMessage) {
+    return res.status(400).json({ error: 'Message is required.' });
+  }
+
+  await ChatMessage.create({
+    tripId: req.trip._id,
+    role: 'user',
+    content: userMessage,
+  });
+
+  const tripContext = {
+    name: req.trip.name,
+    destination: req.trip.destination,
+    startDate: req.trip.startDate,
+    endDate: req.trip.endDate,
+    purpose: req.trip.purpose,
+    status: req.trip.status,
+    itinerary: req.trip.itinerary.map((item) => ({
+      title: item.title,
+      type: item.type,
+      date: item.date,
+      time: item.time,
+      location: item.location,
+      notes: item.notes,
+    })),
   };
 
-  let response = "I'm here to help with your travel needs. Can you be more specific?";
+  const systemPrompt = `${baseSystemPrompt}
+Current trip context: ${JSON.stringify(tripContext)}`;
 
   if (!groq) {
-    const stageResponses = mockResponses[stage] || {};
-    for (const key in stageResponses) {
-      if (userMessage.toLowerCase().includes(key)) {
-        response = stageResponses[key];
-        break;
-      }
-    }
-    return res.json({ response });
+    const response = "AI service is not configured. Please set GROQ_API_KEY in .env to enable chat.";
+    await ChatMessage.create({
+      tripId: req.trip._id,
+      role: 'assistant',
+      content: response,
+    });
+    return res.json({ success: true, response });
   }
 
   try {
+    const history = await ChatMessage.find({ tripId: req.trip._id })
+      .sort({ createdAt: 1 })
+      .limit(20);
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+    ];
+
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Stage: ${stage}. User: ${userMessage}` }
-      ],
-      max_tokens: 500,
+      messages,
+      max_tokens: 600,
     });
-    response = completion.choices[0].message.content;
-    res.json({ response });
+
+    const response = completion.choices[0].message.content;
+    await ChatMessage.create({
+      tripId: req.trip._id,
+      role: 'assistant',
+      content: response,
+    });
+    res.json({ success: true, response });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'AI service unavailable' });

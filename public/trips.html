@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Trips - Travel Chatter</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="chat-page">
+    <nav class="nav">
+        <a href="index.html" class="nav-brand">Travel Chatter</a>
+        <div class="nav-links">
+            <a href="trips.html">My Trips</a>
+            <span class="nav-user" id="auth-status"></span>
+            <button id="logout-button" class="secondary-button">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-heading">
+            <h1>My Trips</h1>
+            <p>Organize every trip and chat with your AI copilot for each one.</p>
+        </div>
+
+        <div class="card">
+            <h3 class="card-title">Create a new trip</h3>
+            <div id="create-error" class="error-message hidden"></div>
+            <div class="form-grid">
+                <input id="trip-name" type="text" placeholder="Trip name (e.g. London Client Visit)">
+                <input id="trip-destination" type="text" placeholder="Destination">
+                <input id="trip-start" type="date" placeholder="Start date">
+                <input id="trip-end" type="date" placeholder="End date">
+                <input id="trip-purpose" type="text" placeholder="Purpose (e.g. Q2 sales review)" class="full-width">
+            </div>
+            <button id="create-button">Create Trip</button>
+        </div>
+
+        <div id="trips-list" class="trips-list"></div>
+        <div id="trips-empty" class="empty-state hidden">
+            <p>No trips yet. Create your first trip above to get started.</p>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+        document.getElementById('logout-button').addEventListener('click', () => {
+            localStorage.removeItem('authToken');
+            window.location.href = 'login.html';
+        });
+
+        fetch('/me', { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    localStorage.removeItem('authToken');
+                    window.location.href = 'login.html';
+                    return;
+                }
+                document.getElementById('auth-status').textContent = data.email;
+            });
+
+        function formatDateRange(start, end) {
+            if (!start && !end) return '';
+            const fmt = d => d ? new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+            if (start && end) return `${fmt(start)} — ${fmt(end)}`;
+            return fmt(start || end);
+        }
+
+        function statusLabel(status) {
+            return { planning: 'Planning', approval: 'Approval', travel: 'Traveling', post: 'Post-Trip' }[status] || status;
+        }
+
+        async function loadTrips() {
+            const res = await fetch('/api/trips', { headers: authHeaders });
+            const data = await res.json();
+            const list = document.getElementById('trips-list');
+            const empty = document.getElementById('trips-empty');
+            list.innerHTML = '';
+
+            if (!data.trips || data.trips.length === 0) {
+                empty.classList.remove('hidden');
+                return;
+            }
+            empty.classList.add('hidden');
+
+            data.trips.forEach(trip => {
+                const card = document.createElement('a');
+                card.className = 'trip-card';
+                card.href = `trip.html?id=${trip._id}`;
+                card.innerHTML = `
+                    <div class="trip-card-header">
+                        <h3>${escapeHtml(trip.name)}</h3>
+                        <span class="status-pill status-${trip.status}">${statusLabel(trip.status)}</span>
+                    </div>
+                    ${trip.destination ? `<p class="trip-destination">${escapeHtml(trip.destination)}</p>` : ''}
+                    ${(trip.startDate || trip.endDate) ? `<p class="trip-dates">${formatDateRange(trip.startDate, trip.endDate)}</p>` : ''}
+                    ${trip.purpose ? `<p class="trip-purpose">${escapeHtml(trip.purpose)}</p>` : ''}
+                `;
+                list.appendChild(card);
+            });
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        document.getElementById('create-button').addEventListener('click', async () => {
+            const errorEl = document.getElementById('create-error');
+            errorEl.classList.add('hidden');
+
+            const body = {
+                name: document.getElementById('trip-name').value.trim(),
+                destination: document.getElementById('trip-destination').value.trim(),
+                startDate: document.getElementById('trip-start').value || null,
+                endDate: document.getElementById('trip-end').value || null,
+                purpose: document.getElementById('trip-purpose').value.trim(),
+            };
+
+            if (!body.name) {
+                errorEl.textContent = 'Trip name is required.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            const res = await fetch('/api/trips', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            if (data.success) {
+                ['trip-name', 'trip-destination', 'trip-start', 'trip-end', 'trip-purpose'].forEach(id => {
+                    document.getElementById(id).value = '';
+                });
+                loadTrips();
+            } else {
+                errorEl.textContent = data.error || 'Failed to create trip.';
+                errorEl.classList.remove('hidden');
+            }
+        });
+
+        loadTrips();
+    </script>
+</body>
+</html>

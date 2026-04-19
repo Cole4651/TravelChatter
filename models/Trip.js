@@ -1,0 +1,37 @@
+const mongoose = require('mongoose');
+
+const itineraryItemSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  type: {
+    type: String,
+    enum: ['flight', 'hotel', 'meeting', 'activity', 'other'],
+    default: 'other',
+  },
+  date: { type: Date },
+  time: { type: String },
+  location: { type: String },
+  notes: { type: String },
+});
+
+const tripSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true,
+  },
+  name: { type: String, required: true, trim: true },
+  destination: { type: String, trim: true },
+  startDate: { type: Date },
+  endDate: { type: Date },
+  purpose: { type: String, trim: true },
+  status: {
+    type: String,
+    enum: ['planning', 'approval', 'travel', 'post'],
+    default: 'planning',
+  },
+  itinerary: [itineraryItemSchema],
+  createdAt: { type: Date, default: Date.now },
+});
+
+module.exports = mongoose.model('Trip', tripSchema);

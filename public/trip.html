@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trip - Travel Chatter</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="chat-page">
+    <nav class="nav">
+        <a href="index.html" class="nav-brand">Travel Chatter</a>
+        <div class="nav-links">
+            <a href="trips.html">My Trips</a>
+            <span class="nav-user" id="auth-status"></span>
+            <button id="logout-button" class="secondary-button">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container container-wide">
+        <a href="trips.html" class="back-link">← All trips</a>
+
+        <div class="trip-header">
+            <div>
+                <h1 id="trip-name"></h1>
+                <p class="trip-meta" id="trip-meta"></p>
+            </div>
+            <div class="trip-header-actions">
+                <select id="trip-status">
+                    <option value="planning">Planning</option>
+                    <option value="approval">Approval</option>
+                    <option value="travel">Traveling</option>
+                    <option value="post">Post-Trip</option>
+                </select>
+                <button id="delete-trip" class="secondary-button">Delete</button>
+            </div>
+        </div>
+
+        <div class="trip-layout">
+            <section class="trip-col">
+                <div class="card">
+                    <h3 class="card-title">Itinerary</h3>
+                    <div id="itinerary-list" class="itinerary-list"></div>
+                    <div id="itinerary-empty" class="empty-state hidden">
+                        <p>No items yet. Add your first one below.</p>
+                    </div>
+
+                    <div class="form-grid itinerary-form">
+                        <input id="item-title" type="text" placeholder="Title (e.g. Flight to LHR)">
+                        <select id="item-type">
+                            <option value="flight">Flight</option>
+                            <option value="hotel">Hotel</option>
+                            <option value="meeting">Meeting</option>
+                            <option value="activity">Activity</option>
+                            <option value="other">Other</option>
+                        </select>
+                        <input id="item-date" type="date">
+                        <input id="item-time" type="time">
+                        <input id="item-location" type="text" placeholder="Location" class="full-width">
+                        <input id="item-notes" type="text" placeholder="Notes (optional)" class="full-width">
+                    </div>
+                    <button id="add-item-button">Add to itinerary</button>
+                </div>
+            </section>
+
+            <section class="trip-col">
+                <div class="card chat-card">
+                    <h3 class="card-title">Trip Chat</h3>
+                    <div class="chat-container chat-container-inline">
+                        <div id="chat-messages"></div>
+                        <div class="input-container">
+                            <input type="text" id="message-input" placeholder="Ask about this trip...">
+                            <button id="send-button">Send</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const tripId = params.get('id');
+        if (!tripId) {
+            window.location.href = 'trips.html';
+        }
+
+        const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+        document.getElementById('logout-button').addEventListener('click', () => {
+            localStorage.removeItem('authToken');
+            window.location.href = 'login.html';
+        });
+
+        fetch('/me', { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    localStorage.removeItem('authToken');
+                    window.location.href = 'login.html';
+                    return;
+                }
+                document.getElementById('auth-status').textContent = data.email;
+            });
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str == null ? '' : String(str);
+            return div.innerHTML;
+        }
+
+        function formatDateRange(start, end) {
+            const fmt = d => d ? new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+            if (start && end) return `${fmt(start)} — ${fmt(end)}`;
+            return fmt(start || end);
+        }
+
+        function renderTrip(trip) {
+            document.getElementById('trip-name').textContent = trip.name;
+            const metaParts = [];
+            if (trip.destination) metaParts.push(trip.destination);
+            const dates = formatDateRange(trip.startDate, trip.endDate);
+            if (dates) metaParts.push(dates);
+            if (trip.purpose) metaParts.push(trip.purpose);
+            document.getElementById('trip-meta').textContent = metaParts.join(' • ');
+            document.getElementById('trip-status').value = trip.status;
+            renderItinerary(trip.itinerary || []);
+        }
+
+        function renderItinerary(items) {
+            const list = document.getElementById('itinerary-list');
+            const empty = document.getElementById('itinerary-empty');
+            list.innerHTML = '';
+            if (items.length === 0) {
+                empty.classList.remove('hidden');
+                return;
+            }
+            empty.classList.add('hidden');
+
+            const sorted = [...items].sort((a, b) => {
+                const da = a.date ? new Date(a.date).getTime() : Infinity;
+                const db = b.date ? new Date(b.date).getTime() : Infinity;
+                return da - db;
+            });
+
+            sorted.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'itinerary-item';
+                const dateStr = item.date ? new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+                const timeStr = item.time || '';
+                div.innerHTML = `
+                    <div class="itinerary-item-type type-${item.type}">${escapeHtml(item.type)}</div>
+                    <div class="itinerary-item-body">
+                        <div class="itinerary-item-title">${escapeHtml(item.title)}</div>
+                        <div class="itinerary-item-meta">
+                            ${dateStr ? `<span>${dateStr}</span>` : ''}
+                            ${timeStr ? `<span>${escapeHtml(timeStr)}</span>` : ''}
+                            ${item.location ? `<span>${escapeHtml(item.location)}</span>` : ''}
+                        </div>
+                        ${item.notes ? `<div class="itinerary-item-notes">${escapeHtml(item.notes)}</div>` : ''}
+                    </div>
+                    <button class="icon-button" data-id="${item._id}" title="Remove">×</button>
+                `;
+                div.querySelector('button').addEventListener('click', () => removeItem(item._id));
+                list.appendChild(div);
+            });
+        }
+
+        async function loadTrip() {
+            const res = await fetch(`/api/trips/${tripId}`, { headers: authHeaders });
+            const data = await res.json();
+            if (!data.success) {
+                window.location.href = 'trips.html';
+                return;
+            }
+            renderTrip(data.trip);
+        }
+
+        async function loadMessages() {
+            const res = await fetch(`/api/trips/${tripId}/messages`, { headers: authHeaders });
+            const data = await res.json();
+            const container = document.getElementById('chat-messages');
+            container.innerHTML = '';
+            if (!data.messages || data.messages.length === 0) {
+                addMessage("Hi! Ask me anything about this trip — I've got the itinerary and details in context.", false);
+                return;
+            }
+            data.messages.forEach(m => addMessage(m.content, m.role === 'user'));
+        }
+
+        function addMessage(content, isUser) {
+            const container = document.getElementById('chat-messages');
+            const div = document.createElement('div');
+            div.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+            div.textContent = content;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        document.getElementById('trip-status').addEventListener('change', async (e) => {
+            await fetch(`/api/trips/${tripId}`, {
+                method: 'PATCH',
+                headers: authHeaders,
+                body: JSON.stringify({ status: e.target.value }),
+            });
+        });
+
+        document.getElementById('delete-trip').addEventListener('click', async () => {
+            if (!confirm('Delete this trip and all its chat history?')) return;
+            const res = await fetch(`/api/trips/${tripId}`, { method: 'DELETE', headers: authHeaders });
+            const data = await res.json();
+            if (data.success) window.location.href = 'trips.html';
+        });
+
+        document.getElementById('add-item-button').addEventListener('click', async () => {
+            const body = {
+                title: document.getElementById('item-title').value.trim(),
+                type: document.getElementById('item-type').value,
+                date: document.getElementById('item-date').value || null,
+                time: document.getElementById('item-time').value || '',
+                location: document.getElementById('item-location').value.trim(),
+                notes: document.getElementById('item-notes').value.trim(),
+            };
+            if (!body.title) return;
+
+            const res = await fetch(`/api/trips/${tripId}/itinerary`, {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            if (data.success) {
+                ['item-title', 'item-date', 'item-time', 'item-location', 'item-notes'].forEach(id => {
+                    document.getElementById(id).value = '';
+                });
+                renderItinerary(data.trip.itinerary || []);
+            }
+        });
+
+        async function removeItem(itemId) {
+            const res = await fetch(`/api/trips/${tripId}/itinerary/${itemId}`, {
+                method: 'DELETE',
+                headers: authHeaders,
+            });
+            const data = await res.json();
+            if (data.success) renderItinerary(data.trip.itinerary || []);
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+            if (!message) return;
+            input.value = '';
+            addMessage(message, true);
+
+            try {
+                const res = await fetch(`/api/trips/${tripId}/chat`, {
+                    method: 'POST',
+                    headers: authHeaders,
+                    body: JSON.stringify({ message }),
+                });
+                const data = await res.json();
+                addMessage(data.response || 'Sorry, I encountered an error.', false);
+            } catch {
+                addMessage("Sorry, I'm having trouble connecting.", false);
+            }
+        }
+
+        document.getElementById('send-button').addEventListener('click', sendMessage);
+        document.getElementById('message-input').addEventListener('keypress', e => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        loadTrip();
+        loadMessages();
+    </script>
+</body>
+</html>
