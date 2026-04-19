@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const OpenAI = require('openai');
+const Groq = require('groq-sdk');
 require('dotenv').config();
 
 const app = express();
@@ -21,10 +21,6 @@ mongoose.connect(MONGODB_URI, {
 }).catch((error) => {
   console.error('MongoDB connection error:', error);
 });
-
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-}) : null;
 
 app.use(bodyParser.json());
 app.use(express.static('public'));
@@ -52,6 +48,10 @@ Always be helpful, clear, and respect privacy.
 Current policies: ${JSON.stringify(travelPolicies)}
 Stages: ${JSON.stringify(tripStages)}
 `;
+
+const groq = process.env.GROQ_API_KEY
+  ? new Groq({ apiKey: process.env.GROQ_API_KEY })
+  : null;
 
 function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization || '';
@@ -153,7 +153,7 @@ app.post('/chat', authenticateToken, async (req, res) => {
 
   let response = "I'm here to help with your travel needs. Can you be more specific?";
 
-  if (!openai) {
+  if (!groq) {
     const stageResponses = mockResponses[stage] || {};
     for (const key in stageResponses) {
       if (userMessage.toLowerCase().includes(key)) {
@@ -165,15 +165,14 @@ app.post('/chat', authenticateToken, async (req, res) => {
   }
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Stage: ${stage}. User: ${userMessage}` }
       ],
       max_tokens: 500,
     });
-
     response = completion.choices[0].message.content;
     res.json({ response });
   } catch (error) {
