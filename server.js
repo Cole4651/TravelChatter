@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Groq = require('groq-sdk');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const helmet = require('helmet');
 require('dotenv').config();
 
@@ -83,7 +83,7 @@ const authLimiter = rateLimit({
   message: { error: 'Too many attempts. Please try again later.' },
 });
 
-const userKey = (req) => (req.user ? String(req.user._id) : req.ip);
+const userKey = (req) => (req.user ? String(req.user._id) : ipKeyGenerator(req.ip));
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -419,19 +419,16 @@ app.post('/api/trips/:tripId/chat', authenticateToken, chatLimiter, loadUserTrip
     endDate: req.trip.endDate,
     purpose: req.trip.purpose,
     status: req.trip.status,
-    itinerary: req.trip.itinerary.map((item) => ({
+    itineraryCount: req.trip.itinerary.length,
+    itinerarySummary: req.trip.itinerary.map((item) => ({
       title: item.title,
       type: item.type,
       date: item.date,
-      time: item.time,
-      location: item.location,
-      notes: item.notes,
     })),
-    wishlist: req.trip.wishlist.map((item) => ({
+    wishlistCount: req.trip.wishlist.length,
+    wishlistSummary: req.trip.wishlist.map((item) => ({
       title: item.title,
       type: item.type,
-      location: item.location,
-      description: item.description,
     })),
   };
 
@@ -440,7 +437,40 @@ app.post('/api/trips/:tripId/chat', authenticateToken, chatLimiter, loadUserTrip
 Today's date: ${today}
 Current trip context: ${JSON.stringify(tripContext)}
 
-You have a tool called add_itinerary_item. Call it when the user asks to add, schedule, book, or plan something for this trip. Pick the best type (flight, hotel, meeting, activity, or other). Resolve relative dates using today's date. After calling, briefly confirm what you added.`;
+You have a tool called add_itinerary_item for adding events to this trip's itinerary.
+
+CRITICAL RULES for add_itinerary_item:
+1. Every "add" request starts FRESH. Ignore details from earlier messages, earlier add requests, existing itinerary entries, or trip metadata.
+2. The ONLY valid source for tool arguments is what the user says in THIS specific add conversation, starting from the current add request.
+3. If the user did not restate a detail in this current add conversation, you DO NOT have it. Ask for it. Do not copy from history.
+4. It is better to ask a question than to guess. Ask one short question when anything required is missing.
+5. Pass ONLY the fields the user stated. Omit unstated fields entirely — do not fall back to defaults from earlier flights/hotels.
+6. Call add_itinerary_item at most ONCE per user message.
+
+Required details by event type:
+- flight: date, time, departure + destination
+- hotel: check-in date, hotel name or area
+- meeting: date, time, location or attendees
+- activity: date (time + location optional)
+- other: title is enough
+
+Examples (assume today is ${today}):
+
+GOOD — asking first:
+  User: "add a flight"
+  You: "Sure — what date and time, and which airports?"
+  User: "April 22 8:30am, JFK to LHR"
+  You: [call add_itinerary_item title="Flight JFK → LHR", type="flight", date="2026-04-22", time="08:30", location="JFK → LHR"]
+  You: "Added your flight to LHR on Apr 22 at 8:30am."
+
+GOOD — new request is truly new:
+  User: (earlier) "Added flight JFK→LHR Apr 22 8:30am"
+  User: (now) "add another flight"
+  You: "Got it — what date/time, and which airports for this one?"   ← ASK, do not reuse JFK→LHR
+
+BAD — never do this:
+  User: "add another flight"
+  You: [calls tool with date="2026-04-22" or JFK→LHR from earlier]   ← WRONG: copied from history`;
 
   if (!groq) {
     const response = "AI service is not configured. Please set GROQ_API_KEY in .env to enable chat.";
@@ -462,10 +492,10 @@ You have a tool called add_itinerary_item. Call it when the user asks to add, sc
         properties: {
           title: { type: 'string', description: 'Short title, e.g. "Flight to LHR" or "Dinner at Dishoom".' },
           type: { type: 'string', enum: ['flight', 'hotel', 'meeting', 'activity', 'other'] },
-          date: { type: 'string', description: 'ISO date YYYY-MM-DD. Omit if the user did not specify.' },
-          time: { type: 'string', description: '24h time HH:MM. Omit if not specified.' },
-          location: { type: 'string', description: 'Airport code, address, venue, or city. Omit if unknown.' },
-          notes: { type: 'string', description: 'Any extra detail the user mentioned.' },
+          date: { type: ['string', 'null'], description: 'ISO date YYYY-MM-DD. Omit or null if the user did not specify.' },
+          time: { type: ['string', 'null'], description: '24h time HH:MM. Omit or null if not specified.' },
+          location: { type: ['string', 'null'], description: 'Airport code, address, venue, or city. Omit or null if unknown.' },
+          notes: { type: ['string', 'null'], description: 'Any extra detail the user mentioned.' },
         },
         required: ['title', 'type'],
       },
@@ -475,10 +505,34 @@ You have a tool called add_itinerary_item. Call it when the user asks to add, sc
   async function runTool(name, args) {
     if (name === 'add_itinerary_item') {
       const title = cap(args.title || '', LIMITS.itemTitle).trim();
-      if (!title) return { success: false, error: 'Title required.' };
+      if (!title) {
+        return { success: false, error: 'Title is required. Ask the user for the item title.' };
+      }
+      const type = ['flight', 'hotel', 'meeting', 'activity', 'other'].includes(args.type) ? args.type : 'other';
+
+      const missing = [];
+      if (type === 'flight') {
+        if (!args.date) missing.push('date');
+        if (!args.time) missing.push('time');
+        if (!args.location) missing.push('departure and destination airports');
+      } else if (type === 'hotel') {
+        if (!args.date) missing.push('check-in date');
+        if (!args.location) missing.push('hotel name or area');
+      } else if (type === 'meeting') {
+        if (!args.date) missing.push('date');
+        if (!args.time) missing.push('time');
+      }
+
+      if (missing.length > 0) {
+        return {
+          success: false,
+          error: `Refused: missing required details for a ${type}: ${missing.join(', ')}. Ask the user for these before retrying. Do NOT invent values.`,
+        };
+      }
+
       req.trip.itinerary.push({
         title,
-        type: ['flight', 'hotel', 'meeting', 'activity', 'other'].includes(args.type) ? args.type : 'other',
+        type,
         date: args.date || null,
         time: cap(args.time || '', 20),
         location: cap(args.location || '', LIMITS.location).trim(),
@@ -492,8 +546,9 @@ You have a tool called add_itinerary_item. Call it when the user asks to add, sc
 
   try {
     const history = await ChatMessage.find({ tripId: req.trip._id })
-      .sort({ createdAt: 1 })
-      .limit(20);
+      .sort({ createdAt: -1 })
+      .limit(12);
+    history.reverse();
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -501,14 +556,15 @@ You have a tool called add_itinerary_item. Call it when the user asks to add, sc
     ];
 
     let finalText = '';
-    const maxIterations = 4;
+    let toolUsed = false;
+    const maxIterations = 3;
 
     for (let i = 0; i < maxIterations; i++) {
       const completion = await groq.chat.completions.create({
         model: 'llama-3.3-70b-versatile',
         messages,
         tools,
-        tool_choice: 'auto',
+        tool_choice: toolUsed ? 'none' : 'auto',
         max_tokens: 600,
       });
       const msg = completion.choices[0].message;
@@ -534,6 +590,7 @@ You have a tool called add_itinerary_item. Call it when the user asks to add, sc
           content: JSON.stringify(result),
         });
       }
+      toolUsed = true;
     }
 
     if (!finalText) finalText = 'Done.';
