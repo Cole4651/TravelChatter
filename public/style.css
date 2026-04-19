@@ -511,6 +511,7 @@ body.landing-page {
     font-size: 0.95rem;
     line-height: 1.55;
     word-wrap: break-word;
+    white-space: pre-wrap;
     animation: fadeIn 0.2s ease-out;
 }
 
