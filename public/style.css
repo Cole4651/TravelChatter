@@ -976,6 +976,57 @@ body.landing-page {
     border-radius: 6px;
 }
 
+/* Globe (trips page) */
+
+.globe-wrapper {
+    position: relative;
+    background: radial-gradient(circle at center, rgba(99, 102, 241, 0.08), transparent 60%), var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    margin-bottom: 24px;
+    overflow: hidden;
+}
+
+#globe-container {
+    width: 100%;
+    height: 420px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#globe-container canvas {
+    display: block;
+    outline: none;
+}
+
+.globe-hint {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 6px 14px;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    pointer-events: none;
+    backdrop-filter: blur(6px);
+}
+
+.globe-label {
+    background: var(--surface);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-strong);
+    font-size: 0.85rem;
+    font-family: inherit;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    white-space: nowrap;
+}
+
 .form-actions {
     display: flex;
     gap: 10px;

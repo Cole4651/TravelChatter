@@ -35,12 +35,13 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'https://unpkg.com'],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:'],
+      imgSrc: ["'self'", 'data:', 'https://unpkg.com'],
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
+      workerSrc: ["'self'", 'blob:'],
     },
   },
   crossOriginEmbedderPolicy: false,
@@ -164,6 +165,29 @@ function authenticateToken(req, res, next) {
   });
 }
 
+async function geocodeDestination(destination) {
+  if (!destination || !destination.trim()) return null;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(destination)}&format=json&limit=1`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'TravelChatter/1.0' },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data) || !data[0]) return null;
+    return {
+      latitude: parseFloat(data[0].lat),
+      longitude: parseFloat(data[0].lon),
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
 async function loadUserTrip(req, res, next) {
   const trip = await Trip.findOne({ _id: req.params.tripId, userId: req.user._id });
   if (!trip) {
@@ -224,6 +248,20 @@ app.get('/me', authenticateToken, (req, res) => {
 
 app.get('/api/trips', authenticateToken, apiLimiter, async (req, res) => {
   const trips = await Trip.find({ userId: req.user._id }).sort({ createdAt: -1 });
+
+  const needGeocoding = trips.filter(
+    (t) => t.destination && t.destination.trim() && (t.latitude == null || t.longitude == null)
+  ).slice(0, 5);
+
+  for (const trip of needGeocoding) {
+    const coords = await geocodeDestination(trip.destination);
+    if (coords) {
+      trip.latitude = coords.latitude;
+      trip.longitude = coords.longitude;
+      await trip.save();
+    }
+  }
+
   res.json({ success: true, trips });
 });
 
@@ -233,14 +271,19 @@ app.post('/api/trips', authenticateToken, apiLimiter, async (req, res) => {
     return res.status(400).json({ error: 'Trip name is required.' });
   }
 
+  const destination = cap(req.body.destination || '', LIMITS.destination).trim();
+  const coords = await geocodeDestination(destination);
+
   const trip = await Trip.create({
     userId: req.user._id,
     name,
-    destination: cap(req.body.destination || '', LIMITS.destination).trim(),
+    destination,
     startDate: req.body.startDate || null,
     endDate: req.body.endDate || null,
     purpose: cap(req.body.purpose || '', LIMITS.purpose).trim(),
     status: req.body.status || 'planning',
+    latitude: coords ? coords.latitude : null,
+    longitude: coords ? coords.longitude : null,
   });
 
   res.json({ success: true, trip });
@@ -256,6 +299,7 @@ app.patch('/api/trips/:tripId', authenticateToken, apiLimiter, loadUserTrip, asy
     destination: LIMITS.destination,
     purpose: LIMITS.purpose,
   };
+  const prevDestination = req.trip.destination;
   for (const [field, max] of Object.entries(stringCaps)) {
     if (req.body[field] !== undefined) {
       req.trip[field] = cap(req.body[field], max).trim();
@@ -264,6 +308,13 @@ app.patch('/api/trips/:tripId', authenticateToken, apiLimiter, loadUserTrip, asy
   if (req.body.startDate !== undefined) req.trip.startDate = req.body.startDate || null;
   if (req.body.endDate !== undefined) req.trip.endDate = req.body.endDate || null;
   if (req.body.status !== undefined) req.trip.status = req.body.status;
+
+  if (req.trip.destination !== prevDestination) {
+    const coords = await geocodeDestination(req.trip.destination);
+    req.trip.latitude = coords ? coords.latitude : null;
+    req.trip.longitude = coords ? coords.longitude : null;
+  }
+
   await req.trip.save();
   res.json({ success: true, trip: req.trip });
 });

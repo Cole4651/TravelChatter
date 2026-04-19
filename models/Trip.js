@@ -38,6 +38,8 @@ const tripSchema = new mongoose.Schema({
     enum: ['planning', 'approval', 'travel', 'post'],
     default: 'planning',
   },
+  latitude: { type: Number, default: null },
+  longitude: { type: Number, default: null },
   itinerary: [itineraryItemSchema],
   wishlist: [wishlistItemSchema],
   createdAt: { type: Date, default: Date.now },

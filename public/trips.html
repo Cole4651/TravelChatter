@@ -22,6 +22,11 @@
             <p>Organize every trip and chat with your AI copilot for each one.</p>
         </div>
 
+        <div class="globe-wrapper">
+            <div id="globe-container"></div>
+            <div class="globe-hint" id="globe-hint">Click a trip below to fly there</div>
+        </div>
+
         <div class="section-header">
             <h2 class="section-title">Your trips</h2>
             <a href="new-trip.html" class="btn-primary btn-sm">+ New Trip</a>
@@ -33,6 +38,7 @@
         </div>
     </div>
 
+    <script src="https://unpkg.com/globe.gl"></script>
     <script>
         const token = localStorage.getItem('authToken');
         if (!token) {
@@ -68,6 +74,73 @@
             return { planning: 'Planning', approval: 'Approval', travel: 'Traveling', post: 'Post-Trip' }[status] || status;
         }
 
+        let globe = null;
+        let pendingPoints = null;
+
+        function initGlobe() {
+            if (globe) return;
+            if (typeof Globe === 'undefined') {
+                setTimeout(initGlobe, 100);
+                return;
+            }
+            const container = document.getElementById('globe-container');
+            globe = Globe()
+                .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
+                .backgroundColor('rgba(0,0,0,0)')
+                .atmosphereColor('#6366f1')
+                .atmosphereAltitude(0.18)
+                .showGraticules(false)
+                .pointLat('lat')
+                .pointLng('lng')
+                .pointColor(() => '#a855f7')
+                .pointAltitude(0.015)
+                .pointRadius(0.6)
+                .pointLabel(d => `<div class="globe-label">${d.name}${d.destination ? ' — ' + d.destination : ''}</div>`)
+                .ringLat('lat')
+                .ringLng('lng')
+                .ringColor(() => t => `rgba(168, 85, 247, ${1 - t})`)
+                .ringMaxRadius(3.5)
+                .ringPropagationSpeed(2)
+                .ringRepeatPeriod(1400)
+                .width(container.clientWidth)
+                .height(420)
+                (container);
+
+            globe.pointOfView({ lat: 25, lng: 0, altitude: 2.3 });
+            const controls = globe.controls();
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 0.4;
+            controls.enableZoom = false;
+
+            window.addEventListener('resize', () => {
+                globe.width(container.clientWidth);
+            });
+
+            if (pendingPoints) {
+                globe.pointsData(pendingPoints);
+                globe.ringsData(pendingPoints);
+                pendingPoints = null;
+            }
+        }
+
+        function setGlobePoints(points) {
+            if (globe) {
+                globe.pointsData(points);
+                globe.ringsData(points);
+            } else {
+                pendingPoints = points;
+            }
+        }
+
+        function flyTo(trip) {
+            if (!globe || trip.latitude == null || trip.longitude == null) return;
+            globe.controls().autoRotate = false;
+            globe.pointOfView(
+                { lat: trip.latitude, lng: trip.longitude, altitude: 1.3 },
+                1200
+            );
+        }
+
         async function loadTrips() {
             const res = await fetch('/api/trips', { headers: authHeaders });
             const data = await res.json();
@@ -75,11 +148,31 @@
             const empty = document.getElementById('trips-empty');
             list.innerHTML = '';
 
+            const hint = document.getElementById('globe-hint');
+
             if (!data.trips || data.trips.length === 0) {
                 empty.classList.remove('hidden');
+                setGlobePoints([]);
+                hint.textContent = 'Create your first trip to see it here';
                 return;
             }
             empty.classList.add('hidden');
+
+            const geocoded = data.trips.filter(t => t.latitude != null && t.longitude != null);
+            const points = geocoded.map(t => ({
+                lat: t.latitude,
+                lng: t.longitude,
+                name: t.name,
+                destination: t.destination,
+                id: t._id,
+            }));
+            setGlobePoints(points);
+
+            if (points.length === 0) {
+                hint.textContent = 'Set a specific destination (e.g. "Tokyo, Japan") to pin it';
+            } else {
+                hint.textContent = 'Click a trip below to fly there';
+            }
 
             data.trips.forEach(trip => {
                 const card = document.createElement('a');
@@ -94,6 +187,12 @@
                     ${(trip.startDate || trip.endDate) ? `<p class="trip-dates">${formatDateRange(trip.startDate, trip.endDate)}</p>` : ''}
                     ${trip.purpose ? `<p class="trip-purpose">${escapeHtml(trip.purpose)}</p>` : ''}
                 `;
+                card.addEventListener('click', (e) => {
+                    if (trip.latitude == null) return;
+                    e.preventDefault();
+                    flyTo(trip);
+                    setTimeout(() => { window.location.href = card.href; }, 1100);
+                });
                 list.appendChild(card);
             });
         }
@@ -104,6 +203,7 @@
             return div.innerHTML;
         }
 
+        initGlobe();
         loadTrips();
     </script>
 </body>
