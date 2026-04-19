@@ -155,7 +155,7 @@
                     <div class="wishlist-item-body">
                         <div class="wishlist-item-title">${escapeHtml(item.title)}</div>
                         <div class="wishlist-item-meta">
-                            ${item.type ? `<span class="wishlist-item-type">${escapeHtml(item.type)}</span>` : ''}
+                            ${item.type ? `<span class="wishlist-item-type type-${escapeHtml(item.type)}">${escapeHtml(item.type)}</span>` : ''}
                             ${item.location ? `<span>${escapeHtml(item.location)}</span>` : ''}
                         </div>
                         ${item.description ? `<div class="wishlist-item-description">${escapeHtml(item.description)}</div>` : ''}

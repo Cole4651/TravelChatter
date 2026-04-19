@@ -977,6 +977,12 @@ body.landing-page {
     font-weight: 600;
 }
 
+.wishlist-item-type.type-food { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+.wishlist-item-type.type-culture { background: rgba(168, 85, 247, 0.15); color: #d8b4fe; }
+.wishlist-item-type.type-outdoor { background: rgba(34, 197, 94, 0.15); color: #86efac; }
+.wishlist-item-type.type-nightlife { background: rgba(236, 72, 153, 0.15); color: #f9a8d4; }
+.wishlist-item-type.type-landmark { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
+
 .wishlist-item-description {
     font-size: 0.88rem;
     color: var(--text-faint);
